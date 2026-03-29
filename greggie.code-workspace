@@ -1,0 +1,10 @@
+{
+  "folders": [
+    { "name": "GRE-MOBILE", "path": "gre-mobile" },
+    { "name": "GRE-BACKEND", "path": "gre-backend" },
+    { "name": "GRE-SHARED", "path": "shared" }
+  ],
+  "settings": {
+    "files.exclude": { "**/.git": true, "**/.DS_Store": true }
+  }
+}

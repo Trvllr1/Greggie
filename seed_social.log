@@ -1,0 +1,12 @@
+2026-03-25T18:10:31.889Z Seeding 10 Reddit + Facebook posts...
+2026-03-25T18:10:32.536Z OK [reddit] https://www.reddit.com/r/technology/comments/1bu4jkl/openai_announces_gpt5/
+2026-03-25T18:10:32.762Z OK [reddit] https://www.reddit.com/r/AskReddit/comments/1bq0iqz/what_is_the_most_useful_website_you_know/
+2026-03-25T18:10:33.002Z OK [reddit] https://www.reddit.com/r/todayilearned/comments/1bs2mva/til_that_honey_never_expires/
+2026-03-25T18:10:33.201Z OK [reddit] https://www.reddit.com/r/science/comments/1bp9dkf/new_study_finds_regular_exercise_boosts_memory/
+2026-03-25T18:10:33.428Z OK [reddit] https://www.reddit.com/r/worldnews/comments/1bt8lnp/climate_scientists_warn_of_accelerating_ice_loss/
+2026-03-25T18:10:34.217Z OK [facebook] https://www.facebook.com/NASA/posts/pfbid02ABC123xyz
+2026-03-25T18:10:34.460Z OK [facebook] https://www.facebook.com/NationalGeographic/posts/pfbid02DEF456abc
+2026-03-25T18:10:34.650Z OK [facebook] https://www.facebook.com/BBCNews/posts/pfbid02GHI789def
+2026-03-25T18:10:35.076Z OK [facebook] https://www.facebook.com/TED/posts/pfbid02JKL012ghi
+2026-03-25T18:10:35.249Z OK [facebook] https://www.facebook.com/NPR/posts/pfbid02MNO345jkl
+2026-03-25T18:10:35.250Z Done: 10/10 ingested.

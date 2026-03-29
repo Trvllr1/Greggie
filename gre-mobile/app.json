@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "greggie",
+    "slug": "greggie",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "greggie",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.greggie.app"
+    },
+    "android": {
+      "package": "com.greggie.app"
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}
