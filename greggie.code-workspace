@@ -1,10 +1,12 @@
 {
   "folders": [
-    { "name": "GRE-MOBILE", "path": "gre-mobile" },
-    { "name": "GRE-BACKEND", "path": "gre-backend" },
-    { "name": "GRE-SHARED", "path": "shared" }
+    { "name": "ROOT", "path": "." },
+    { "name": "WEB", "path": "packages/web" },
+    { "name": "CORE", "path": "packages/core" },
+    { "name": "BACKEND", "path": "backend" },
+    { "name": "SHARED", "path": "shared" }
   ],
   "settings": {
-    "files.exclude": { "**/.git": true, "**/.DS_Store": true }
+    "files.exclude": { "**/.git": true, "**/.DS_Store": true, "Greggie/": true, "gre-backend/": true, "gre-mobile/": true }
   }
 }

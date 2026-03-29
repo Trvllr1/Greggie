@@ -1,0 +1,12 @@
+{
+  "name": "greggie",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @greggie/web dev",
+    "build:web": "pnpm --filter @greggie/web build",
+    "dev:backend": "docker compose up --build"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

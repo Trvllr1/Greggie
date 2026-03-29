@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+packages/*/node_modules/
+
+# Build
+dist/
+packages/*/dist/
+backend/greggie-backend
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Prototype clone (archived — source ported to packages/web/)
+Greggie/
+
+# Old aggregator files (archived in branch archive/aggregator-v1)
+gre-backend/
+gre-mobile/
+seed.sql
+seed_*.cjs
+seed_*.log
+seed.log
+feed_check.json
+shared/schema.json
