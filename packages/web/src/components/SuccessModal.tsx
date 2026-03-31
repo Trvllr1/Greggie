@@ -1,7 +1,15 @@
 import { motion } from 'motion/react';
 import { CheckCircle2, Package } from 'lucide-react';
 
-export function SuccessModal({ onClose }: { onClose: () => void }) {
+type SuccessModalProps = {
+  order: { id: string; status: string; total_cents: number } | null;
+  onClose: () => void;
+};
+
+export function SuccessModal({ order, onClose }: SuccessModalProps) {
+  const orderId = order?.id ? `#${order.id.slice(0, 8).toUpperCase()}` : '#GRG-0000';
+  const total = order?.total_cents ? `$${(order.total_cents / 100).toFixed(2)}` : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -26,10 +34,13 @@ export function SuccessModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3">
             <Package className="text-gray-400" />
             <div className="text-left">
-              <p className="text-sm font-medium text-gray-900">Order #GRG-8492</p>
-              <p className="text-xs text-gray-500">Processing</p>
+              <p className="text-sm font-medium text-gray-900">Order {orderId}</p>
+              <p className="text-xs text-gray-500">{order?.status ?? 'Processing'}</p>
             </div>
           </div>
+          {total && (
+            <p className="text-lg font-bold text-gray-900">{total}</p>
+          )}
         </div>
         
         <button

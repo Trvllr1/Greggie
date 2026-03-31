@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/* ── Greggie™ Design Tokens ── */
+@theme {
+  /* Backgrounds — blue-black layered depth */
+  --color-g-base: #0A0A0F;
+  --color-g-surface: #141419;
+  --color-g-surface-elevated: #1A1A22;
+  --color-g-surface-overlay: #222230;
+
+  /* Text hierarchy */
+  --color-g-text: #F1F5F9;
+  --color-g-text-secondary: #94A3B8;
+  --color-g-text-muted: #64748B;
+  --color-g-text-disabled: #475569;
+
+  /* Accent — indigo */
+  --color-g-accent: #818CF8;
+  --color-g-accent-muted: #6366F1;
+
+  /* Semantic */
+  --color-g-success: #34D399;
+  --color-g-warning: #FBBF24;
+  --color-g-error: #F87171;
+
+  /* Skeleton */
+  --color-g-skeleton: #1A1A22;
+  --color-g-skeleton-highlight: #2A2A35;
+}
+
+/* ── Base styles ── */
+body {
+  background-color: var(--color-g-base);
+  color: var(--color-g-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,8 +1,13 @@
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { Channel, Product } from '../data/mockData';
-import { ShoppingBag, Heart, Share2, MessageCircle, Sparkles, X, Send, User, Gavel, Timer, Gift, HelpCircle, Bell, BellRing } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import { ShoppingBag, Heart, Share2, MessageCircle, Sparkles, X, Send, User, Gavel, Timer, Gift, HelpCircle, Bell, BellRing, ChevronUp, ChevronDown, Volume2, VolumeX } from 'lucide-react';
+import { ButterflyIcon } from './ButterflyIcon';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ShareSheet } from './ShareSheet';
 import { Countdown } from './Countdown';
+import { searchRelay, type RelayMatch } from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
 
 type LiveViewProps = {
   channel: Channel;
@@ -16,6 +21,7 @@ type LiveViewProps = {
   onChangeFeedType?: (type: 'FOR_YOU' | 'FOLLOWING') => void;
   followedChannels?: Record<string, boolean>;
   onToggleFollow?: (channelId: string) => void;
+  onGoHome?: () => void;
 };
 
 export function LiveView({ 
@@ -29,10 +35,13 @@ export function LiveView({
   feedType = 'FOR_YOU',
   onChangeFeedType,
   followedChannels = {},
-  onToggleFollow
+  onToggleFollow,
+  onGoHome
 }: LiveViewProps) {
   const [showRelayQuery, setShowRelayQuery] = useState(false);
   const [query, setQuery] = useState('');
+  const [relayStatus, setRelayStatus] = useState<'idle' | 'searching' | 'found' | 'empty'>('idle');
+  const [relayMatches, setRelayMatches] = useState<RelayMatch[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   const [messages, setMessages] = useState<{id: string; user: string; text: string; isSystem?: boolean; isQuestion?: boolean}>([
@@ -51,6 +60,21 @@ export function LiveView({
   const [pinnedQuestion, setPinnedQuestion] = useState<{user: string, text: string} | null>({
     user: 'Sam', text: 'Is there a warranty?'
   });
+
+  // WebSocket: subscribe to channel and listen for incoming chat messages
+  const { sendChat, on: wsOn } = useWebSocket();
+
+  useEffect(() => {
+    return wsOn('chat:message', (msg) => {
+      try {
+        const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;
+        setMessages(prev => [
+          ...prev,
+          { id: Date.now().toString(), user: data.user ?? 'Viewer', text: data.text },
+        ]);
+      } catch { /* ignore malformed */ }
+    });
+  }, [wsOn]);
 
   const fallbackScheduledTime = useMemo(() => {
     return new Date(Date.now() + 86400000).toISOString();
@@ -128,27 +152,20 @@ export function LiveView({
     }
   };
 
-  const handleShare = async () => {
-    const shareData = {
-      title: `Watch ${channel.title} on Greggie™`,
-      text: `Check out ${channel.merchant.name} live on Greggie™!`,
-      url: window.location.href,
-    };
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const [volume, setVolume] = useState(80);
+  const [isMuted, setIsMuted] = useState(false);
+  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hlsPlayerRef = useRef<HlsPlayerHandle>(null);
+  const [isStreamLive, setIsStreamLive] = useState(false);
 
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err) {
-        console.error('Error sharing:', err);
-      }
-    } else {
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        alert('Link copied to clipboard!');
-      } catch (err) {
-        console.error('Failed to copy link:', err);
-      }
-    }
+  const isHlsStream = channel.streamUrl?.includes('.m3u8');
+
+  const handleMouseActivity = () => {
+    setShowControls(true);
+    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), 3000);
   };
 
   return (
@@ -158,6 +175,9 @@ export function LiveView({
       dragConstraints={{ top: 0, bottom: 0 }}
       dragElastic={0.2}
       onDragEnd={handleDragEnd}
+      onMouseMove={handleMouseActivity}
+      onMouseEnter={handleMouseActivity}
+      onMouseLeave={() => setShowControls(false)}
     >
       {/* Video Player (Animates to PiP) */}
       <motion.div
@@ -169,11 +189,31 @@ export function LiveView({
         }
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
       >
-        <img
-          src={channel.streamUrl}
-          alt={channel.title}
-          className="h-full w-full object-cover opacity-80 pointer-events-none"
-        />
+        {isHlsStream ? (
+          <HlsPlayer
+            ref={hlsPlayerRef}
+            src={channel.streamUrl}
+            muted={isMuted}
+            className="h-full w-full object-cover pointer-events-none"
+            poster={channel.streamUrl.replace(/\/[^/]+\/index\.m3u8$/, '') ? undefined : undefined}
+            onStreamReady={() => setIsStreamLive(true)}
+            onStreamError={() => setIsStreamLive(false)}
+          />
+        ) : (
+          <img
+            src={channel.streamUrl}
+            alt={channel.title}
+            className="h-full w-full object-cover opacity-80 pointer-events-none"
+          />
+        )}
+        {!isStreamLive && isHlsStream && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <span className="text-sm text-white/70">Connecting to stream...</span>
+            </div>
+          </div>
+        )}
         {isPiP && (
           <div className="absolute top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
             {channel.type}
@@ -214,6 +254,14 @@ export function LiveView({
 
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 p-4 pt-12 flex items-center justify-between pointer-events-auto">
+              {/* Home button */}
+              <button
+                onClick={onGoHome}
+                className="absolute top-3 left-4 rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-colors hover:bg-white/20 z-10"
+                title="Back to Splash"
+              >
+                <ButterflyIcon size={24} />
+              </button>
               {/* For You / Following Tabs */}
               <div className="absolute top-12 left-1/2 -translate-x-1/2 flex items-center gap-4 drop-shadow-md">
                 <button 
@@ -286,6 +334,12 @@ export function LiveView({
                         <span className="tracking-wide font-bold">{channel.type === 'SCHEDULED' ? 'UPCOMING' : channel.type}</span>
                       </motion.span>
                     </AnimatePresence>
+                    {channel.isPrimary && (
+                      <span className="flex items-center gap-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30">
+                        <Sparkles size={10} />
+                        SPONSORED
+                      </span>
+                    )}
                     {channel.type !== 'SCHEDULED' && (
                       <span className="text-white/90 drop-shadow-sm font-semibold">{channel.viewers.toLocaleString()} viewers</span>
                     )}
@@ -314,6 +368,24 @@ export function LiveView({
 
             {channel.type === 'SCHEDULED' ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-auto z-30">
+                {/* Nav arrows for scheduled channels */}
+                {onPrevChannel && (
+                  <button
+                    onClick={onPrevChannel}
+                    className="absolute left-1/2 top-20 -translate-x-1/2 z-40 rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors"
+                  >
+                    <ChevronUp size={28} />
+                  </button>
+                )}
+                {onNextChannel && (
+                  <button
+                    onClick={onNextChannel}
+                    className="absolute left-1/2 bottom-10 -translate-x-1/2 z-40 rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors"
+                  >
+                    <ChevronDown size={28} />
+                  </button>
+                )}
+
                 <div className="flex flex-col items-center p-8 text-center mt-20">
                   <div className="mb-6 rounded-3xl bg-white/10 p-8 backdrop-blur-xl border border-white/20 shadow-2xl">
                     <h3 className="text-sm font-bold text-white/60 uppercase tracking-widest mb-4">Starts In</h3>
@@ -362,9 +434,10 @@ export function LiveView({
                           initial={{ opacity: 0, y: -10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                          className="mt-3 flex flex-col gap-3 rounded-2xl bg-black/80 p-4 backdrop-blur-xl border border-white/10 shadow-2xl max-h-64 overflow-hidden"
+                          className="mt-3 flex flex-col gap-3 rounded-2xl bg-black/80 p-4 backdrop-blur-xl border border-white/10 shadow-2xl max-h-72 overflow-hidden"
                         >
                           <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+                            {/* System greeting */}
                             <div className="flex gap-2">
                               <div className="h-6 w-6 shrink-0 rounded-full bg-indigo-600 flex items-center justify-center">
                                 <Sparkles size={12} className="text-white" />
@@ -373,43 +446,100 @@ export function LiveView({
                                 Hi! I'm Relay AI. Ask me anything about the products in this stream.
                               </div>
                             </div>
-                            {query === 'seeking' && (
+
+                            {/* Searching indicator */}
+                            {relayStatus === 'searching' && (
                               <div className="flex gap-2">
                                 <div className="h-6 w-6 shrink-0 rounded-full bg-indigo-600 flex items-center justify-center">
                                   <Sparkles size={12} className="text-white" />
                                 </div>
                                 <div className="rounded-2xl rounded-tl-none bg-indigo-500/20 border border-indigo-500/30 px-3 py-2 text-sm text-indigo-100">
-                                  <span className="animate-pulse">Seeking to 00:02:14 where they discuss titanium...</span>
+                                  <span className="animate-pulse">Searching transcript...</span>
                                 </div>
                               </div>
                             )}
+
+                            {/* No results */}
+                            {relayStatus === 'empty' && (
+                              <div className="flex gap-2">
+                                <div className="h-6 w-6 shrink-0 rounded-full bg-indigo-600 flex items-center justify-center">
+                                  <Sparkles size={12} className="text-white" />
+                                </div>
+                                <div className="rounded-2xl rounded-tl-none bg-white/10 px-3 py-2 text-sm text-white/60">
+                                  No matching moments found. Try different keywords.
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Match results */}
+                            {relayStatus === 'found' && relayMatches.map((m, i) => (
+                              <div key={i} className="flex gap-2">
+                                <div className="h-6 w-6 shrink-0 rounded-full bg-indigo-600 flex items-center justify-center">
+                                  <Sparkles size={12} className="text-white" />
+                                </div>
+                                <button
+                                  className="rounded-2xl rounded-tl-none bg-indigo-500/20 border border-indigo-500/30 px-3 py-2 text-left text-sm text-indigo-100 hover:bg-indigo-500/30 transition-colors w-full"
+                                  onClick={() => {
+                                    // TODO: seek video to m.timestamp_sec when real player is integrated
+                                    setShowRelayQuery(false);
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="font-semibold text-indigo-200">{m.formatted_time}</span>
+                                    <span className="text-[10px] text-indigo-300/60">{Math.round(m.confidence * 100)}% match</span>
+                                  </div>
+                                  <p className="text-white/70 text-xs line-clamp-2">{m.transcript_chunk}</p>
+                                </button>
+                              </div>
+                            ))}
                           </div>
+
                           <div className="relative mt-auto">
                             <input
                               type="text"
-                              value={query === 'seeking' ? '' : query}
+                              value={query}
                               onChange={(e) => setQuery(e.target.value)}
                               placeholder="e.g., Does this support titanium?"
-                              className="w-full rounded-xl bg-white/10 pl-4 pr-10 py-3 text-sm text-white placeholder-white/40 outline-none focus:bg-white/20 focus:ring-1 focus:ring-indigo-500 transition-all"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && query.trim()) {
-                                  setQuery('seeking');
-                                  setTimeout(() => {
-                                    setQuery('');
-                                    setShowRelayQuery(false);
-                                  }, 3000);
+                              disabled={relayStatus === 'searching'}
+                              className="w-full rounded-xl bg-white/10 pl-4 pr-10 py-3 text-sm text-white placeholder-white/40 outline-none focus:bg-white/20 focus:ring-1 focus:ring-indigo-500 transition-all disabled:opacity-50"
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter' && query.trim() && relayStatus !== 'searching') {
+                                  setRelayStatus('searching');
+                                  setRelayMatches([]);
+                                  try {
+                                    const res = await searchRelay(channel.id, query.trim());
+                                    if (res.matches.length > 0) {
+                                      setRelayMatches(res.matches);
+                                      setRelayStatus('found');
+                                    } else {
+                                      setRelayStatus('empty');
+                                    }
+                                  } catch {
+                                    setRelayStatus('empty');
+                                  }
+                                  setQuery('');
                                 }
                               }}
                             />
                             <button 
-                              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
-                              onClick={() => {
-                                if (query.trim()) {
-                                  setQuery('seeking');
-                                  setTimeout(() => {
-                                    setQuery('');
-                                    setShowRelayQuery(false);
-                                  }, 3000);
+                              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
+                              disabled={relayStatus === 'searching' || !query.trim()}
+                              onClick={async () => {
+                                if (query.trim() && relayStatus !== 'searching') {
+                                  setRelayStatus('searching');
+                                  setRelayMatches([]);
+                                  try {
+                                    const res = await searchRelay(channel.id, query.trim());
+                                    if (res.matches.length > 0) {
+                                      setRelayMatches(res.matches);
+                                      setRelayStatus('found');
+                                    } else {
+                                      setRelayStatus('empty');
+                                    }
+                                  } catch {
+                                    setRelayStatus('empty');
+                                  }
+                                  setQuery('');
                                 }
                               }}
                             >
@@ -421,6 +551,80 @@ export function LiveView({
                     </AnimatePresence>
                   </div>
                 )}
+
+                {/* Channel Nav Arrows (appear on hover) */}
+                <AnimatePresence>
+                  {showControls && (
+                    <>
+                      {onPrevChannel && (
+                        <motion.button
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          onClick={onPrevChannel}
+                          className="absolute left-1/2 top-20 -translate-x-1/2 z-30 rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors pointer-events-auto"
+                        >
+                          <ChevronUp size={28} />
+                        </motion.button>
+                      )}
+                      {onNextChannel && (
+                        <motion.button
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          onClick={onNextChannel}
+                          className="absolute left-1/2 bottom-36 -translate-x-1/2 z-30 rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors pointer-events-auto"
+                        >
+                          <ChevronDown size={28} />
+                        </motion.button>
+                      )}
+                    </>
+                  )}
+                </AnimatePresence>
+
+                {/* Volume Control (appears on hover) */}
+                <AnimatePresence>
+                  {showControls && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute bottom-36 left-4 z-30 flex flex-col items-center gap-2 pointer-events-auto"
+                    >
+                      <div className="relative h-24 w-8 flex items-center justify-center">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={isMuted ? 0 : volume}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setVolume(v);
+                            if (v > 0) setIsMuted(false);
+                            hlsPlayerRef.current?.setVolume(v / 100);
+                            hlsPlayerRef.current?.setMuted(v === 0);
+                          }}
+                          className="absolute h-20 w-1.5 appearance-none rounded-full bg-white/20 outline-none [writing-mode:vertical-lr] direction-rtl [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIsMuted(m => {
+                            const newMuted = !m;
+                            hlsPlayerRef.current?.setMuted(newMuted);
+                            return newMuted;
+                          });
+                        }}
+                        className="rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors"
+                      >
+                        {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Right Actions */}
                 <div className="absolute bottom-32 right-4 flex flex-col gap-6 pointer-events-auto">
@@ -465,12 +669,24 @@ export function LiveView({
                     </div>
                     <span className="text-xs font-medium">842</span>
                   </button>
-                  <button onClick={handleShare} className="flex flex-col items-center gap-1">
-                    <div className="rounded-full bg-black/40 p-3 backdrop-blur-md">
-                      <Share2 size={24} className="text-white" />
-                    </div>
-                    <span className="text-xs font-medium">Share</span>
-                  </button>
+                  <div className="relative">
+                    <button onClick={() => setShowShareSheet(s => !s)} className="flex flex-col items-center gap-1">
+                      <div className="rounded-full bg-black/40 p-3 backdrop-blur-md">
+                        <Share2 size={24} className="text-white" />
+                      </div>
+                      <span className="text-xs font-medium">Share</span>
+                    </button>
+                    <AnimatePresence>
+                      {showShareSheet && (
+                        <ShareSheet
+                          title={`Watch ${channel.title} on Greggie™`}
+                          text={`Check out ${channel.merchant.name} live on Greggie™!`}
+                          url={window.location.href}
+                          onClose={() => setShowShareSheet(false)}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 {/* Products Tray */}
@@ -624,6 +840,7 @@ export function LiveView({
                             };
                             
                             setMessages(prev => [...prev, newMsg]);
+                            sendChat(channel.id, chatMessage);
                             
                             if (isAskMode) {
                               setPinnedQuestion({ user: 'You', text: chatMessage });

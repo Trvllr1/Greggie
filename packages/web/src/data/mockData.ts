@@ -9,6 +9,8 @@ export type Product = {
   currentBid?: number;
   endTime?: string;
   highestBidder?: string;
+  auctionStatus?: string;
+  bidCount?: number;
 };
 
 export type Channel = {
@@ -19,6 +21,7 @@ export type Channel = {
   viewers: number;
   badge?: string;
   category: string;
+  isPrimary?: boolean;
   products: Product[];
   merchant: {
     name: string;
@@ -29,31 +32,30 @@ export type Channel = {
 
 export const CATEGORIES = [
   'All',
-  'Electronics',
+  'Tech',
   'Fashion',
   'Collectibles',
   'Beauty',
-  'Food & Drink',
-  'Art & Design',
+  'Food',
+  'Art',
   'Fitness',
   'Automotive',
-  'Home & Living',
+  'Home',
   'Luxury',
   'Pets',
   'Travel',
-  'Gaming',
-  'Music'
 ];
 
 export const MOCK_CHANNELS: Channel[] = [
   {
     id: 'c1',
-    title: 'Samsung Live Event',
+    title: 'Samsung Galaxy Unpacked',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1605236453806-6ff36851218e?auto=format&fit=crop&q=80&w=1200&h=600',
     viewers: 14200,
     badge: 'EXCLUSIVE',
-    category: 'Electronics',
+    category: 'Tech',
+    isPrimary: true,
     merchant: {
       name: 'Samsung Official',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Samsung',
@@ -84,7 +86,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c2',
     title: 'NYC Boutique Drop',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 3200,
     badge: 'FLASH',
     category: 'Fashion',
@@ -108,7 +110,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c3',
     title: 'Vintage Card Breaks',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1605806616949-1e87b487cb2a?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1626197031507-c17099753214?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 850,
     badge: 'REPLAY',
     category: 'Collectibles',
@@ -134,7 +136,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c4',
     title: 'GlowUp Summer Collection',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1596462502278-27bf85033e5a?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 28500,
     badge: 'TRENDING',
     category: 'Beauty',
@@ -148,7 +150,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Sunset Eyeshadow Palette',
         price: 45.00,
         inventory: 500,
-        mediaUrl: 'https://images.unsplash.com/photo-1512496115841-3450283723be?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1583241800698-e8ab01830a07?auto=format&fit=crop&q=80&w=400',
         description: '12 highly pigmented warm shades.',
         saleType: 'drop',
         endTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
@@ -168,9 +170,9 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c5',
     title: 'Chef Mario Cooks Live',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 5400,
-    category: 'Food & Drink',
+    category: 'Food',
     merchant: {
       name: 'Chef Mario',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mario',
@@ -191,10 +193,10 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c6',
     title: 'Live Canvas: Abstract Series',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 1200,
     badge: 'ART',
-    category: 'Art & Design',
+    category: 'Art',
     merchant: {
       name: 'Elena Arts',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Elena',
@@ -217,7 +219,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c7',
     title: 'SneakerHeadz: Rare Jordan Drop',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 45000,
     badge: 'HYPE',
     category: 'Fashion',
@@ -242,7 +244,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c8',
     title: 'Luxe Watches Vault',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 8900,
     badge: 'LUXURY',
     category: 'Luxury',
@@ -268,7 +270,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c9',
     title: 'Iron & Yoga Essentials',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 450,
     category: 'Fitness',
     merchant: {
@@ -291,7 +293,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c10',
     title: 'Classic Car Auctions',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 12400,
     badge: 'PREMIUM',
     category: 'Automotive',
@@ -317,9 +319,9 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c11',
     title: 'TechReview: Unboxing the Future',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 18500,
-    category: 'Electronics',
+    category: 'Tech',
     merchant: {
       name: 'TechReview',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Tech',
@@ -341,7 +343,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c12',
     title: 'K-Pop Merch Exclusive',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 52000,
     badge: 'GLOBAL',
     category: 'Collectibles',
@@ -365,9 +367,9 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c13',
     title: 'Minimalist Home Decor',
     type: 'SCHEDULED',
-    streamUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 0,
-    category: 'Home & Living',
+    category: 'Home',
     merchant: {
       name: 'Zen Spaces',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Zen',
@@ -389,7 +391,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c14',
     title: 'Spoiled Pups Boutique',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 6700,
     category: 'Pets',
     merchant: {
@@ -412,7 +414,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c15',
     title: 'Adventure Awaits: Travel Gear',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 1100,
     category: 'Travel',
     merchant: {
@@ -435,10 +437,10 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c16',
     title: 'Custom Kicks Live',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 8500,
     badge: 'CREATIVE',
-    category: 'Art & Design',
+    category: 'Art',
     merchant: {
       name: 'Sole Artist',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sole',
@@ -461,7 +463,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c17',
     title: 'Rare Books & Manuscripts',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 3200,
     category: 'Collectibles',
     merchant: {
@@ -486,10 +488,10 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c18',
     title: 'Urban Jungle: Rare Plants',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1416879598555-220b8f385f53?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 14500,
     badge: 'DROP',
-    category: 'Home & Living',
+    category: 'Home',
     merchant: {
       name: 'Botany Bay',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Plant',
@@ -511,9 +513,9 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c19',
     title: 'Indie Game Showcase',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 22000,
-    category: 'Gaming',
+    category: 'Tech',
     merchant: {
       name: 'Pixel Studios',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Pixel',
@@ -524,7 +526,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Cyberpunk 2077 Collector Edition',
         price: 199.99,
         inventory: 50,
-        mediaUrl: 'https://images.unsplash.com/photo-1605901309584-818e25960b8f?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1493711662062-fa541adb3fc8?auto=format&fit=crop&q=80&w=400',
         description: 'Includes statue, artbook, and digital soundtrack.',
         saleType: 'buy_now',
       }
@@ -534,9 +536,9 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c20',
     title: 'Vintage Vinyl Digging',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1603048297172-c92544798d5e?auto=format&fit=crop&q=80&w=1080&h=1920',
+    streamUrl: 'https://images.unsplash.com/photo-1539375665275-f9de415ef9ac?auto=format&fit=crop&q=80&w=800&h=600',
     viewers: 2800,
-    category: 'Music',
+    category: 'Collectibles',
     merchant: {
       name: 'Spin Records',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Vinyl',

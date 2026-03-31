@@ -4,9 +4,16 @@
   "scripts": {
     "dev:web": "pnpm --filter @greggie/web dev",
     "build:web": "pnpm --filter @greggie/web build",
+    "dev:mobile": "pnpm --filter @greggie/mobile start",
     "dev:backend": "docker compose up --build"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "expo": "^55.0.9"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10"
   }
 }

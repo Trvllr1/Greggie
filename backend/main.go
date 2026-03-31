@@ -1,17 +1,26 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
-	"strconv"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
-	"greggie/backend/internal/database"
-	"greggie/backend/internal/scraper"
+	"greggie/backend/internal/auction"
+	"greggie/backend/internal/handlers"
+	"greggie/backend/internal/middleware"
+	"greggie/backend/internal/payments"
+	"greggie/backend/internal/store"
+	"greggie/backend/internal/ws"
 
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/google/uuid"
+	fiberCors "github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 func main() {
@@ -20,21 +29,104 @@ func main() {
 		port = "8080"
 	}
 
-	db, err := database.New()
+	db, err := store.New()
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
-	app := fiber.New()
-	app.Use(logger.New())
-	app.Use(cors.New())
+	// ── Stripe payments ──
+	payments.Init()
+
+	// ── WebSocket hub ──
+	hub := ws.NewHub()
+	hub.OnJoin = func(channelID, userID string) {
+		count, _ := db.IncrViewers(channelID)
+		payload, _ := json.Marshal(map[string]interface{}{"channel_id": channelID, "count": count})
+		hub.BroadcastJSON(channelID, ws.Message{
+			Event:     ws.EventViewerCount,
+			ChannelID: channelID,
+			Payload:   payload,
+		})
+	}
+	hub.OnLeave = func(channelID, userID string) {
+		count, _ := db.DecrViewers(channelID)
+		if count < 0 {
+			count = 0
+		}
+		payload, _ := json.Marshal(map[string]interface{}{"channel_id": channelID, "count": count})
+		hub.BroadcastJSON(channelID, ws.Message{
+			Event:     ws.EventViewerCount,
+			ChannelID: channelID,
+			Payload:   payload,
+		})
+	}
+	go hub.Run()
+
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+			}
+			return c.Status(code).JSON(fiber.Map{"error": err.Error()})
+		},
+	})
+	app.Use(fiberLogger.New())
+
+	// ── CORS: env-controlled origins ──
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000,http://localhost:5173"
+	}
+	app.Use(fiberCors.New(fiberCors.Config{
+		AllowOrigins: allowedOrigins,
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+	}))
+
+	// ── Global rate limiter: 100 req/min per IP ──
+	app.Use(limiter.New(limiter.Config{
+		Max:        100,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "rate limit exceeded — try again later",
+			})
+		},
+	}))
+
+	// ── Handlers ──
+	auth := &handlers.AuthHandler{Store: db}
+	channels := &handlers.ChannelHandler{Store: db}
+	products := &handlers.ProductHandler{Store: db}
+	users := &handlers.UserHandler{Store: db}
+	checkout := &handlers.CheckoutHandler{Store: db}
+	events := &handlers.EventHandler{Store: db}
+	relay := &handlers.RelayHandler{Store: db}
+	creator := &handlers.CreatorHandler{Store: db}
+	connect := &handlers.ConnectHandler{Store: db}
+	webhooks := &handlers.WebhookHandler{Store: db}
+	auctionH := &handlers.AuctionHandler{Store: db, Hub: hub}
+	shop := &handlers.ShopHandler{Store: db}
+	marketplace := &handlers.MarketplaceHandler{Store: db}
+	cart := &handlers.CartHandler{Store: db}
+
+	// ── Auction engine (auto-ends expired auctions) ──
+	auctionEngine := auction.NewEngine(db, hub)
+	auctionEngine.Start()
 
 	api := app.Group("/api/v1")
 
-	// GET /api/v1/health — liveness/readiness check
+	// Health
 	api.Get("/health", func(c *fiber.Ctx) error {
-		status := fiber.Map{"status": "ok"}
+		status := fiber.Map{
+			"status":     "ok",
+			"service":    "greggie",
+			"ws_clients": hub.ClientCount(),
+		}
 		if err := db.Ping(); err != nil {
 			status["status"] = "degraded"
 			status["db"] = err.Error()
@@ -42,239 +134,154 @@ func main() {
 		return c.JSON(status)
 	})
 
-	// POST /api/v1/ingest — accept a raw URL, unfurl OG metadata, store feed item
-	api.Post("/ingest", func(c *fiber.Ctx) error {
-		var body struct {
-			URL string `json:"url"`
-		}
-		if err := c.BodyParser(&body); err != nil || body.URL == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "url is required"})
-		}
+	// Auth (public) — stricter rate limit: 10 req/min
+	authLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP() + ":auth"
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "too many auth attempts — try again later",
+			})
+		},
+	})
+	api.Post("/auth/register", authLimiter, auth.Register)
+	api.Post("/auth/login", authLimiter, auth.Login)
+	api.Post("/auth/dev", authLimiter, auth.DevLogin)
 
-		item, err := scraper.Unfurl(body.URL)
-		if err != nil {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-		}
+	// Channels (public)
+	api.Get("/channels/primary", channels.GetPrimary)
+	api.Get("/channels/rail", channels.GetRail)
+	api.Get("/channels/:id", channels.GetByID)
 
-		if err := db.SaveFeedItem(item); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save item"})
-		}
+	// Products (public)
+	api.Get("/products/:id", products.GetByID)
+	api.Get("/channels/:channelId/products", products.GetByChannel)
 
-		return c.Status(fiber.StatusCreated).JSON(item)
+	// Viewer count (public, from Redis)
+	api.Get("/channels/:id/viewers", func(c *fiber.Ctx) error {
+		count, _ := db.GetViewers(c.Params("id"))
+		return c.JSON(fiber.Map{"channel_id": c.Params("id"), "count": count})
 	})
 
-	// GET /api/v1/feed — return the cached feed with cursor pagination
-	api.Get("/feed", func(c *fiber.Ctx) error {
-		userID := c.Query("user_id")
-		cursor := c.Query("cursor")
-		limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	// Relay (public — viewers can search replay transcripts)
+	api.Post("/relay/query", relay.Query)
+	api.Get("/relay/:channelId/entries", relay.GetEntries)
 
-		items, err := db.GetFeed(userID, cursor, limit)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load feed"})
-		}
+	// Stripe webhooks (public — signature verified internally)
+	api.Post("/webhooks/stripe", webhooks.HandleStripeWebhook)
 
-		// Include next_cursor if there are results
-		var nextCursor string
-		if len(items) > 0 {
-			nextCursor = items[len(items)-1].CollectedAt
-		}
+	// Marketplace (public)
+	api.Get("/marketplace/products", marketplace.SearchProducts)
+	api.Get("/marketplace/trending", marketplace.GetTrending)
+	api.Get("/marketplace/gateway", marketplace.Gateway)
 
-		return c.JSON(fiber.Map{
-			"items":       items,
-			"next_cursor": nextCursor,
-		})
-	})
+	// Shops (public)
+	api.Get("/shops/:slug", shop.GetShopBySlug)
 
-	// DELETE /api/v1/feed/:id — remove a feed item
-	api.Delete("/feed/:id", func(c *fiber.Ctx) error {
-		id := c.Params("id")
-		if err := db.DeleteFeedItem(id); err != nil {
-			if err.Error() == "not found" {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "item not found"})
+	// ── Guest-or-Authenticated routes (optional auth) ──
+	optAuth := api.Group("", middleware.OptionalAuth())
+	optAuth.Post("/checkout/marketplace", checkout.MarketplaceCheckout)
+	optAuth.Post("/checkout/estimate", checkout.EstimateTax)
+	optAuth.Post("/checkout/validate-coupon", checkout.ValidateCoupon)
+
+	// ── WebSocket ──
+	// Upgrade check — parse JWT from query param ?token=<jwt>
+	app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			token := c.Query("token")
+			if token != "" {
+				userID, _, err := middleware.ParseToken(token)
+				if err == nil {
+					c.Locals("user_id", userID)
+				}
 			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete"})
+			return c.Next()
 		}
-		return c.SendStatus(fiber.StatusNoContent)
+		return fiber.ErrUpgradeRequired
 	})
+	app.Get("/ws", websocket.New(ws.HandleWebSocket(hub)))
 
-	// ── Collections endpoints ──
+	// ── Protected routes ──
+	protected := api.Group("", middleware.RequireAuth())
 
-	// POST /api/v1/collections — create a collection
-	api.Post("/collections", func(c *fiber.Ctx) error {
-		var body struct {
-			Name  string `json:"name"`
-			Emoji string `json:"emoji"`
-		}
-		if err := c.BodyParser(&body); err != nil || body.Name == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name is required"})
-		}
-		col, err := db.CreateCollection(uuid.New().String(), "", body.Name, body.Emoji)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create collection"})
-		}
-		return c.Status(fiber.StatusCreated).JSON(col)
-	})
+	// User
+	protected.Get("/users/me", auth.Me)
+	protected.Post("/users/follow/:channelId", users.Follow)
+	protected.Delete("/users/follow/:channelId", users.Unfollow)
+	protected.Get("/users/following", users.GetFollowing)
 
-	// GET /api/v1/collections — list all collections
-	api.Get("/collections", func(c *fiber.Ctx) error {
-		userID := c.Query("user_id")
-		collections, err := db.GetCollections(userID)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load collections"})
-		}
-		if collections == nil {
-			collections = []database.Collection{}
-		}
-		return c.JSON(collections)
-	})
+	// Checkout
+	protected.Post("/checkout", checkout.InitCheckout)
+	protected.Get("/shipping-addresses", checkout.GetShippingAddresses)
+	protected.Post("/bids", auctionH.PlaceBid)
 
-	// GET /api/v1/collections/:id — get a collection with its items
-	api.Get("/collections/:id", func(c *fiber.Ctx) error {
-		id := c.Params("id")
-		col, items, err := db.GetCollectionWithItems(id)
-		if err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "collection not found"})
-		}
-		if items == nil {
-			items = []scraper.FeedItem{}
-		}
-		return c.JSON(fiber.Map{"collection": col, "items": items})
-	})
+	// Auction
+	protected.Post("/auction/start", auctionH.StartAuction)
 
-	// PUT /api/v1/collections/:id — update a collection
-	api.Put("/collections/:id", func(c *fiber.Ctx) error {
-		id := c.Params("id")
-		var body struct {
-			Name  string `json:"name"`
-			Emoji string `json:"emoji"`
-		}
-		if err := c.BodyParser(&body); err != nil || body.Name == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name is required"})
-		}
-		if err := db.UpdateCollection(id, body.Name, body.Emoji); err != nil {
-			if err.Error() == "not found" {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "collection not found"})
-			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update"})
-		}
-		return c.JSON(fiber.Map{"ok": true})
-	})
+	// Bid history (public)
+	api.Get("/products/:productId/bids", auctionH.GetBidHistory)
 
-	// DELETE /api/v1/collections/:id — delete a collection
-	api.Delete("/collections/:id", func(c *fiber.Ctx) error {
-		id := c.Params("id")
-		if err := db.DeleteCollection(id); err != nil {
-			if err.Error() == "not found" {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "collection not found"})
-			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	// Events
+	protected.Post("/events", events.TrackEvent)
 
-	// POST /api/v1/collections/:id/items — add item to collection
-	api.Post("/collections/:id/items", func(c *fiber.Ctx) error {
-		collectionID := c.Params("id")
-		var body struct {
-			FeedItemID string `json:"feed_item_id"`
-		}
-		if err := c.BodyParser(&body); err != nil || body.FeedItemID == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "feed_item_id is required"})
-		}
-		if err := db.AddItemToCollection(collectionID, body.FeedItemID); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add item"})
-		}
-		return c.Status(fiber.StatusCreated).JSON(fiber.Map{"ok": true})
-	})
+	// Stripe Connect onboarding
+	protected.Post("/connect/onboard", connect.StartOnboarding)
+	protected.Get("/connect/status", connect.GetStatus)
 
-	// DELETE /api/v1/collections/:id/items/:itemId — remove item from collection
-	api.Delete("/collections/:id/items/:itemId", func(c *fiber.Ctx) error {
-		collectionID := c.Params("id")
-		feedItemID := c.Params("itemId")
-		if err := db.RemoveItemFromCollection(collectionID, feedItemID); err != nil {
-			if err.Error() == "not found" {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "item not in collection"})
-			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove"})
-		}
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	// Shop management (auth required)
+	protected.Post("/shops", shop.CreateShop)
+	protected.Get("/shop", shop.GetMyShop)
+	protected.Put("/shop", shop.UpdateMyShop)
+	protected.Get("/shop/products", shop.ListMyProducts)
+	protected.Post("/shop/products", shop.CreateProduct)
+	protected.Put("/shop/products/:id", shop.UpdateProduct)
+	protected.Delete("/shop/products/:id", shop.ArchiveProduct)
 
-	// ── Share Stack endpoints ──
+	// Cart (auth required)
+	protected.Get("/cart", cart.GetCart)
+	protected.Post("/cart/items", cart.AddItem)
+	protected.Put("/cart/items/:id", cart.UpdateItem)
+	protected.Delete("/cart/items/:id", cart.RemoveItem)
 
-	// POST /api/v1/stack — unfurl URL and store in share stack
-	api.Post("/stack", func(c *fiber.Ctx) error {
-		var body struct {
-			URL string `json:"url"`
-		}
-		if err := c.BodyParser(&body); err != nil || body.URL == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "url is required"})
-		}
-		item, err := scraper.Unfurl(body.URL)
-		if err != nil {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-		}
-		stackItem := &database.StackItem{
-			ID:        uuid.New().String(),
-			URL:       body.URL,
-			Source:    item.Source,
-			Content:   item.Content,
-			Status:    "pending",
-			CreatedAt: item.CollectedAt,
-		}
-		if err := db.SaveStackItem(stackItem); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save to stack"})
-		}
-		return c.Status(fiber.StatusCreated).JSON(stackItem)
-	})
+	// Creator studio (auth required)
+	protected.Get("/creator/channels", creator.GetMyChannels)
+	protected.Post("/creator/channels", creator.CreateChannel)
+	protected.Put("/creator/channels/:id", creator.UpdateChannel)
+	protected.Delete("/creator/channels/:id", creator.DeleteChannel)
+	protected.Post("/creator/channels/:id/live", creator.GoLive)
+	protected.Post("/creator/channels/:id/end", creator.EndStream)
+	protected.Post("/creator/channels/:id/products", creator.CreateProduct)
+	protected.Put("/creator/channels/:id/products/:productId", creator.UpdateProduct)
+	protected.Delete("/creator/channels/:id/products/:productId", creator.DeleteProduct)
+	protected.Post("/creator/channels/:id/pin", creator.PinProduct)
+	protected.Get("/creator/channels/:id/analytics", creator.GetAnalytics)
 
-	// GET /api/v1/stack — get all pending stack items
-	api.Get("/stack", func(c *fiber.Ctx) error {
-		userID := c.Query("user_id")
-		items, err := db.GetStack(userID)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load stack"})
-		}
-		if items == nil {
-			items = []database.StackItem{}
-		}
-		return c.JSON(items)
-	})
+	// ── Graceful shutdown ──
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// GET /api/v1/stack/count — pending item count for badge
-	api.Get("/stack/count", func(c *fiber.Ctx) error {
-		userID := c.Query("user_id")
-		count, err := db.GetStackCount(userID)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to count"})
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			log.Printf("server error: %v", err)
 		}
-		return c.JSON(fiber.Map{"count": count})
-	})
+	}()
+	log.Printf("Greggie™ backend started on :%s", port)
 
-	// POST /api/v1/stack/:id/accept — move stack item to feed
-	api.Post("/stack/:id/accept", func(c *fiber.Ctx) error {
-		stackID := c.Params("id")
-		var body struct {
-			CollectionID string `json:"collection_id"`
-		}
-		c.BodyParser(&body) // optional body
-		feedItem, err := db.AcceptStackItem(stackID, body.CollectionID)
-		if err != nil {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.JSON(feedItem)
-	})
+	<-quit
+	log.Println("Shutting down gracefully...")
 
-	// POST /api/v1/stack/:id/dismiss — dismiss a stack item
-	api.Post("/stack/:id/dismiss", func(c *fiber.Ctx) error {
-		stackID := c.Params("id")
-		if err := db.DismissStackItem(stackID); err != nil {
-			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.JSON(fiber.Map{"ok": true})
-	})
+	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+		log.Printf("shutdown error: %v", err)
+	}
 
-	log.Printf("Greggie backend listening on :%s", port)
-	log.Fatal(app.Listen(":" + port))
+	auctionEngine.Stop()
+	hub.Shutdown()
+	db.Close()
+	log.Println("Server stopped")
+
+	// Suppress unused import warnings
+	_ = strings.Join
 }

@@ -1,13 +1,12 @@
 import type {
-  ApiResponse,
   Channel,
   Product,
   User,
-  CheckoutSession,
   Order,
 } from "./types";
 
 // ─── API Client ─── Master Design Section 15 ───
+// Matches actual Go backend response shapes (no ApiResponse wrapper).
 
 export class ApiClient {
   private baseUrl: string;
@@ -23,6 +22,10 @@ export class ApiClient {
 
   clearToken() {
     this.token = null;
+  }
+
+  getToken() {
+    return this.token;
   }
 
   private async request<T>(
@@ -54,7 +57,7 @@ export class ApiClient {
 
   // ── Health ──
   health() {
-    return this.request<{ status: string }>("GET", "/health");
+    return this.request<{ status: string; service: string }>("GET", "/health");
   }
 
   // ── Auth ──
@@ -73,83 +76,79 @@ export class ApiClient {
     });
   }
 
+  devLogin() {
+    return this.request<{ token: string; user: User }>("POST", "/auth/dev");
+  }
+
   // ── Channels ──
   getPrimaryChannel() {
-    return this.request<ApiResponse<Channel>>("GET", "/channels/primary");
+    return this.request<Channel>("GET", "/channels/primary");
   }
 
-  getRail(cursor?: string) {
-    const qs = cursor ? `?cursor=${cursor}` : "";
-    return this.request<ApiResponse<Channel[]>>("GET", `/channels/rail${qs}`);
+  getRail(category?: string) {
+    const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+    return this.request<Channel[]>("GET", `/channels/rail${qs}`);
   }
 
-  switchChannel(channelId: string) {
-    return this.request<ApiResponse<Channel>>("POST", "/channels/switch", {
-      channel_id: channelId,
-    });
+  getChannelById(channelId: string) {
+    return this.request<Channel>("GET", `/channels/${channelId}`);
   }
 
   // ── Products ──
   getProduct(productId: string) {
-    return this.request<ApiResponse<Product>>("GET", `/products/${productId}`);
+    return this.request<Product>("GET", `/products/${productId}`);
   }
 
   getChannelProducts(channelId: string) {
-    return this.request<ApiResponse<Product[]>>(
+    return this.request<Product[]>(
       "GET",
       `/channels/${channelId}/products`
     );
   }
 
   // ── Checkout ──
-  initCheckout(productId: string, quantity: number) {
-    return this.request<ApiResponse<CheckoutSession>>(
+  initCheckout(productId: string, quantity: number, channelId: string) {
+    return this.request<Order>(
       "POST",
-      "/checkout/init",
-      { product_id: productId, quantity }
+      "/checkout",
+      { product_id: productId, quantity, channel_id: channelId }
     );
   }
 
-  confirmCheckout(sessionId: string) {
-    return this.request<ApiResponse<Order>>("POST", "/checkout/confirm", {
-      session_id: sessionId,
+  // ── Bids ──
+  placeBid(productId: string, amountCents: number) {
+    return this.request<void>("POST", "/bids", {
+      product_id: productId,
+      amount_cents: amountCents,
     });
   }
 
   // ── User ──
   getMe() {
-    return this.request<ApiResponse<User>>("GET", "/users/me");
+    return this.request<User>("GET", "/users/me");
   }
 
   followChannel(channelId: string) {
-    return this.request<void>("POST", `/users/follow`, {
-      channel_id: channelId,
-    });
+    return this.request<void>("POST", `/users/follow/${channelId}`);
   }
 
   unfollowChannel(channelId: string) {
-    return this.request<void>("DELETE", `/users/follow`, {
-      channel_id: channelId,
-    });
+    return this.request<void>("DELETE", `/users/follow/${channelId}`);
   }
 
-  // ── Events ──
-  trackEvent(
-    eventType: string,
-    channelId?: string,
-    payload?: Record<string, unknown>
-  ) {
-    return this.request<void>("POST", "/events", {
-      event_type: eventType,
-      channel_id: channelId,
-      payload,
-    });
+  getFollowing() {
+    return this.request<Channel[]>("GET", "/users/following");
   }
 
   // ── Relay AI ──
-  queryRelay(channelId: string, query: string) {
-    return this.request<
-      ApiResponse<{ timestamp_sec: number; confidence: number; snippet: string }>
-    >("POST", "/relay/query", { channel_id: channelId, query });
+  searchRelay(channelId: string, query: string) {
+    return this.request<{
+      matches: {
+        timestamp_sec: number;
+        transcript_chunk: string;
+        confidence: number;
+        formatted_time: string;
+      }[];
+    }>("POST", "/relay/query", { channel_id: channelId, query });
   }
 }

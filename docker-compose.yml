@@ -8,11 +8,30 @@ services:
       - DATABASE_URL=postgres://greggie:greggie@postgres:5432/greggie?sslmode=disable
       - REDIS_URL=redis:6379
       - JWT_SECRET=dev-secret-change-in-prod
+      - ENVIRONMENT=dev
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+      - DB_MAX_OPEN=50
+      - DB_MAX_IDLE=10
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - MEDIAMTX_URL=http://mediamtx:9997
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    ports:
+      - "1935:1935"   # RTMP ingest (OBS pushes here)
+      - "8888:8888"   # HLS output (browser plays from here)
+      - "9997:9997"   # API (stream status, config)
+    environment:
+      - MTX_PROTOCOLS=tcp
+      - MTX_HLSALLOWORGIN=*
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
 
   postgres:
     image: postgres:16-alpine
@@ -24,6 +43,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./shared/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U greggie"]
       interval: 5s

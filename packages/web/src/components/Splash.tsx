@@ -1,13 +1,18 @@
 import { motion } from 'motion/react';
-import { ShoppingBag, ChevronRight, Video } from 'lucide-react';
+import { ChevronRight, Video, ShoppingBag } from 'lucide-react';
+import { ButterflyIcon } from './ButterflyIcon';
+import { useState } from 'react';
 
-export function Splash({ onEnter, onEnterCreator }: { onEnter: () => void, onEnterCreator?: () => void }) {
+export function Splash({ onEnter, onEnterCreator, onEnterMarketplace }: { onEnter: () => void, onEnterCreator?: () => void, onEnterMarketplace?: () => void }) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black text-white"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+      style={{ backgroundColor: '#0A0A0F' }}
     >
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
@@ -15,11 +20,15 @@ export function Splash({ onEnter, onEnterCreator }: { onEnter: () => void, onEnt
         transition={{ delay: 0.2, duration: 0.5, type: 'spring' }}
         className="flex flex-col items-center"
       >
-        <div className="mb-6 rounded-full bg-white/10 p-6 backdrop-blur-md">
-          <ShoppingBag size={48} className="text-white" />
-        </div>
-        <h1 className="mb-2 text-4xl font-bold tracking-tighter">Greggie™</h1>
-        <p className="mb-12 text-lg text-white/60">The Live Commerce OS</p>
+        <motion.div
+          className="mb-6"
+          onHoverStart={() => setHovered(true)}
+          onHoverEnd={() => setHovered(false)}
+        >
+          <ButterflyIcon size={64} hovered={hovered} />
+        </motion.div>
+        <h1 className="mb-2 text-4xl font-bold tracking-tighter" style={{ color: '#F1F5F9' }}>Greggie™</h1>
+        <p className="mb-12 text-lg" style={{ color: '#94A3B8' }}>The Live Commerce OS</p>
         
         <div className="flex flex-col gap-4 items-center">
           <motion.button
@@ -41,6 +50,18 @@ export function Splash({ onEnter, onEnterCreator }: { onEnter: () => void, onEnt
             >
               <Video size={16} />
               Enter as Creator
+            </motion.button>
+          )}
+
+          {onEnterMarketplace && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onEnterMarketplace}
+              className="group flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 py-3 text-sm font-medium text-white/80 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <ShoppingBag size={16} />
+              Browse Shop
             </motion.button>
           )}
         </div>

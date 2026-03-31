@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Greggie",
+    "slug": "greggie",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "greggie",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#0A0A0F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.greggie.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.greggie.app"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}

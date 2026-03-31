@@ -1,0 +1,39 @@
+# MediaMTX config for Greggie Live Streaming
+# Accepts RTMP from OBS, outputs HLS for browsers
+
+###############################################
+# General
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# RTMP server (creators push from OBS)
+rtmp: yes
+rtmpAddress: :1935
+
+###############################################
+# HLS server (viewers play in browser)
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigins: ['*']
+hlsVariant: lowLatency
+hlsSegmentCount: 3
+hlsSegmentDuration: 500ms
+hlsPartDuration: 100ms
+hlsSegmentMaxSize: 50M
+
+###############################################
+# API (used by backend to check stream status)
+api: yes
+apiAddress: :9997
+
+###############################################
+# Disable protocols we don't need
+rtsp: no
+webrtc: no
+srt: no
+
+###############################################
+# Paths — accept any stream key
+paths:
+  all_others:

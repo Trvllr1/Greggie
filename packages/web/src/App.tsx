@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useReducer, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Splash } from './components/Splash';
 import { LiveView } from './components/LiveView';
@@ -8,42 +8,172 @@ import { BidModal } from './components/BidModal';
 import { SuccessModal } from './components/SuccessModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { CreatorStudio } from './components/CreatorStudio';
-import { MOCK_CHANNELS, Channel, Product } from './data/mockData';
+import { OnboardingOverlay, shouldSkipOnboarding } from './components/OnboardingOverlay';
+import { AuthModal } from './components/AuthModal';
+import { MarketplaceBrowse } from './components/MarketplaceBrowse';
+import { ProductPage } from './components/ProductPage';
+import { CartDrawer } from './components/CartDrawer';
+import { MarketplaceCheckout } from './components/MarketplaceCheckout';
+import { MOCK_CHANNELS, type Channel, type Product } from './data/mockData';
+import { useChannels } from './hooks/useChannels';
+import { useWebSocket } from './hooks/useWebSocket';
+import { useTrackEvent } from './hooks/useTrackEvent';
+import { useAuth } from './hooks/useAuth';
+import { useCart } from './hooks/useCart';
+import * as api from './services/api';
 
-type SessionState = 'ENTRY_LOBBY' | 'WATCHING_PC' | 'BROWSING_RAIL' | 'CHECKOUT_ACTIVE' | 'BIDDING_ACTIVE' | 'PURCHASE_COMPLETE' | 'USER_PROFILE' | 'CREATOR_STUDIO';
+// ── Session State Machine ──
+type SessionState =
+  | 'ENTRY_LOBBY'
+  | 'ONBOARDING'
+  | 'WATCHING_PC'
+  | 'BROWSING_RAIL'
+  | 'CHECKOUT_ACTIVE'
+  | 'BIDDING_ACTIVE'
+  | 'PURCHASE_COMPLETE'
+  | 'USER_PROFILE'
+  | 'CREATOR_STUDIO'
+  | 'BROWSING_MARKETPLACE'
+  | 'VIEWING_PRODUCT'
+  | 'MARKETPLACE_CHECKOUT';
+
+type SessionAction =
+  | { type: 'ENTER_MALL' }
+  | { type: 'ENTER_CREATOR' }
+  | { type: 'ENTER_MARKETPLACE' }
+  | { type: 'ONBOARDING_COMPLETE' }
+  | { type: 'OPEN_RAIL' }
+  | { type: 'CLOSE_RAIL' }
+  | { type: 'START_CHECKOUT' }
+  | { type: 'START_BID' }
+  | { type: 'PURCHASE_DONE' }
+  | { type: 'CLOSE_MODAL' }
+  | { type: 'OPEN_PROFILE' }
+  | { type: 'CLOSE_PROFILE' }
+  | { type: 'VIEW_PRODUCT' }
+  | { type: 'BACK_TO_MARKETPLACE' }
+  | { type: 'START_MARKETPLACE_CHECKOUT' }
+  | { type: 'EXIT_TO_LOBBY' };
+
+function sessionReducer(state: SessionState, action: SessionAction): SessionState {
+  switch (action.type) {
+    case 'ENTER_MALL':
+      return shouldSkipOnboarding() ? 'WATCHING_PC' : 'ONBOARDING';
+    case 'ENTER_CREATOR':
+      return 'CREATOR_STUDIO';
+    case 'ENTER_MARKETPLACE':
+      return 'BROWSING_MARKETPLACE';
+    case 'ONBOARDING_COMPLETE':
+      return 'WATCHING_PC';
+    case 'OPEN_RAIL':
+      return 'BROWSING_RAIL';
+    case 'CLOSE_RAIL':
+    case 'CLOSE_MODAL':
+    case 'CLOSE_PROFILE':
+      return 'WATCHING_PC';
+    case 'START_CHECKOUT':
+      return 'CHECKOUT_ACTIVE';
+    case 'START_BID':
+      return 'BIDDING_ACTIVE';
+    case 'PURCHASE_DONE':
+      return 'PURCHASE_COMPLETE';
+    case 'OPEN_PROFILE':
+      return 'USER_PROFILE';
+    case 'VIEW_PRODUCT':
+      return 'VIEWING_PRODUCT';
+    case 'BACK_TO_MARKETPLACE':
+      return 'BROWSING_MARKETPLACE';
+    case 'START_MARKETPLACE_CHECKOUT':
+      return 'MARKETPLACE_CHECKOUT';
+    case 'EXIT_TO_LOBBY':
+      return 'ENTRY_LOBBY';
+    default:
+      return state;
+  }
+}
 
 export default function App() {
-  const [sessionState, setSessionState] = useState<SessionState>('ENTRY_LOBBY');
+  const [sessionState, dispatch] = useReducer(sessionReducer, 'ENTRY_LOBBY');
+  const { isLoggedIn, user } = useAuth();
+  const [preferredCategory, setPreferredCategory] = useState<string | undefined>(undefined);
+  const { channels, primary, loading, error, usingMock } = useChannels(preferredCategory);
   const [currentChannel, setCurrentChannel] = useState<Channel>(MOCK_CHANNELS[0]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [lastOrder, setLastOrder] = useState<{ id: string; status: string; total_cents: number } | null>(null);
   const [feedType, setFeedType] = useState<'FOR_YOU' | 'FOLLOWING'>('FOR_YOU');
   const [followedChannels, setFollowedChannels] = useState<Record<string, boolean>>({});
+  const [showAuth, setShowAuth] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const [marketplaceProduct, setMarketplaceProduct] = useState<Product | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
+  const cart = useCart();
+
+  // Sync current channel to primary when data loads
+  useEffect(() => {
+    if (primary) setCurrentChannel(primary);
+  }, [primary]);
+
+  // Hydrate followed channels from backend on login
+  useEffect(() => {
+    if (!isLoggedIn || usingMock) return;
+    api.getFollowing()
+      .then(followed => {
+        const map: Record<string, boolean> = {};
+        followed.forEach(ch => { map[ch.id] = true; });
+        setFollowedChannels(map);
+      })
+      .catch(() => {});
+  }, [isLoggedIn, usingMock]);
+
+  // ── Real-time: WebSocket + analytics ──
+  const { subscribe, on } = useWebSocket();
+  const track = useTrackEvent();
+
+  // Subscribe WS to the channel we're watching
+  useEffect(() => {
+    if (sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO') {
+      subscribe(currentChannel.id);
+      track('view_start', currentChannel.id);
+      return () => { track('view_end', currentChannel.id); };
+    }
+  }, [currentChannel.id, sessionState, subscribe, track]);
+
+  // Listen for real-time viewer count updates
+  useEffect(() => {
+    return on('viewer:count', (msg) => {
+      const data = msg.payload as { channel_id: string; count: number };
+      setCurrentChannel(prev =>
+        prev.id === data.channel_id ? { ...prev, viewers: data.count } : prev,
+      );
+    });
+  }, [on]);
 
   const handleEnterMall = () => {
-    setSessionState('WATCHING_PC');
+    dispatch({ type: 'ENTER_MALL' });
   };
 
   const handleEnterCreator = () => {
-    setSessionState('CREATOR_STUDIO');
+    dispatch({ type: 'ENTER_CREATOR' });
   };
 
   const handleOpenRail = () => {
-    setSessionState('BROWSING_RAIL');
+    setRailOpen(prev => !prev);
   };
 
   const handleCloseRail = () => {
-    setSessionState('WATCHING_PC');
+    setRailOpen(false);
   };
 
   const handleSelectChannel = (channel: Channel) => {
+    track('channel_switch', channel.id);
     setCurrentChannel(channel);
-    setSessionState('WATCHING_PC');
+    setRailOpen(false);
   };
 
   const handleNextChannel = () => {
     const activeChannels = feedType === 'FOLLOWING' 
-      ? MOCK_CHANNELS.filter(c => followedChannels[c.id])
-      : MOCK_CHANNELS;
+      ? channels.filter(c => followedChannels[c.id])
+      : channels;
       
     if (activeChannels.length === 0) return;
 
@@ -54,8 +184,8 @@ export default function App() {
 
   const handlePrevChannel = () => {
     const activeChannels = feedType === 'FOLLOWING' 
-      ? MOCK_CHANNELS.filter(c => followedChannels[c.id])
-      : MOCK_CHANNELS;
+      ? channels.filter(c => followedChannels[c.id])
+      : channels;
       
     if (activeChannels.length === 0) return;
 
@@ -65,13 +195,23 @@ export default function App() {
   };
 
   const handleToggleFollow = (channelId: string) => {
-    setFollowedChannels(prev => ({ ...prev, [channelId]: !prev[channelId] }));
+    const isFollowed = !!followedChannels[channelId];
+    setFollowedChannels(prev => ({ ...prev, [channelId]: !isFollowed }));
+    track(isFollowed ? 'unfollow' : 'follow', channelId);
+    // Fire-and-forget API call (optimistic UI)
+    if (!usingMock && api.getToken()) {
+      (isFollowed ? api.unfollowChannel(channelId) : api.followChannel(channelId))
+        .catch(() => {
+          // Revert on failure
+          setFollowedChannels(prev => ({ ...prev, [channelId]: isFollowed }));
+        });
+    }
   };
 
   const handleChangeFeedType = (type: 'FOR_YOU' | 'FOLLOWING') => {
     setFeedType(type);
     if (type === 'FOLLOWING') {
-      const following = MOCK_CHANNELS.filter(c => followedChannels[c.id]);
+      const following = channels.filter(c => followedChannels[c.id]);
       if (following.length > 0 && !followedChannels[currentChannel.id]) {
         setCurrentChannel(following[0]);
       }
@@ -79,56 +219,108 @@ export default function App() {
   };
 
   const handleBuy = (product: Product) => {
+    if (!isLoggedIn) {
+      setShowAuth(true);
+      return;
+    }
     setSelectedProduct(product);
+    track('add_to_cart', currentChannel.id, { product_id: product.id });
     if (product.saleType === 'auction') {
-      setSessionState('BIDDING_ACTIVE');
+      dispatch({ type: 'START_BID' });
     } else {
-      setSessionState('CHECKOUT_ACTIVE');
+      dispatch({ type: 'START_CHECKOUT' });
     }
   };
 
   const handleCloseCheckout = () => {
     setSelectedProduct(null);
-    setSessionState('WATCHING_PC');
+    dispatch({ type: 'CLOSE_MODAL' });
   };
 
-  const handleCheckoutComplete = () => {
-    setSessionState('PURCHASE_COMPLETE');
+  const handleCheckoutComplete = (order: { id: string; status: string; total_cents: number }) => {
+    setLastOrder(order);
+    track('checkout_complete', currentChannel.id, { product_id: selectedProduct?.id, order_id: order.id });
+    dispatch({ type: 'PURCHASE_DONE' });
   };
 
-  const handleBidComplete = (amount: number) => {
-    // In a real app, we'd update the product's currentBid here
-    // For now, just show success
-    setSessionState('PURCHASE_COMPLETE');
+  const handleBidComplete = async (amount: number) => {
+    // Bid already placed via BidModal's api.placeBid call
+    dispatch({ type: 'PURCHASE_DONE' });
   };
 
   const handleCloseSuccess = () => {
     setSelectedProduct(null);
-    setSessionState('WATCHING_PC');
+    setLastOrder(null);
+    dispatch({ type: 'CLOSE_MODAL' });
   };
 
   const handleOpenProfile = () => {
-    setSessionState('USER_PROFILE');
+    dispatch({ type: 'OPEN_PROFILE' });
   };
 
   const handleCloseProfile = () => {
-    setSessionState('WATCHING_PC');
+    dispatch({ type: 'CLOSE_PROFILE' });
   };
+
+  const handleEnterMarketplace = () => {
+    dispatch({ type: 'ENTER_MARKETPLACE' });
+  };
+
+  const handleViewProduct = (product: Product) => {
+    setMarketplaceProduct(product);
+    dispatch({ type: 'VIEW_PRODUCT' });
+  };
+
+  const handleBackToMarketplace = () => {
+    setMarketplaceProduct(null);
+    dispatch({ type: 'BACK_TO_MARKETPLACE' });
+  };
+
+  const handleWatchChannel = useCallback((channelId: string) => {
+    api.getChannelById(channelId)
+      .then(ch => {
+        setCurrentChannel(ch);
+        dispatch({ type: 'ENTER_MALL' });
+      })
+      .catch(() => {
+        // If channel fetch fails, still try to switch
+        dispatch({ type: 'ENTER_MALL' });
+      });
+  }, []);
+
+
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black font-sans selection:bg-indigo-500/30">
       <AnimatePresence mode="wait">
         {sessionState === 'ENTRY_LOBBY' && (
-          <Splash onEnter={handleEnterMall} onEnterCreator={handleEnterCreator} />
+          <Splash onEnter={handleEnterMall} onEnterCreator={handleEnterCreator} onEnterMarketplace={handleEnterMarketplace} />
         )}
       </AnimatePresence>
 
       {sessionState === 'CREATOR_STUDIO' && (
-        <CreatorStudio onExit={() => setSessionState('ENTRY_LOBBY')} />
+        <CreatorStudio onExit={() => dispatch({ type: 'EXIT_TO_LOBBY' })} />
       )}
 
+      <AnimatePresence>
+        {sessionState === 'ONBOARDING' && (
+          <OnboardingOverlay
+            onComplete={(cats) => {
+              if (cats.length > 0) setPreferredCategory(cats[0]);
+              dispatch({ type: 'ONBOARDING_COMPLETE' });
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && (
-        <LiveView
+        <>
+          {usingMock && !loading && (
+            <div className="fixed top-0 inset-x-0 z-40 bg-amber-500/90 text-black text-center text-xs py-1 font-medium backdrop-blur-sm">
+              Demo mode — backend unreachable. <button className="underline font-bold" onClick={() => window.location.reload()}>Retry</button>
+            </div>
+          )}
+          <LiveView
           channel={currentChannel}
           onBuy={handleBuy}
           onOpenRail={handleOpenRail}
@@ -140,13 +332,15 @@ export default function App() {
           onChangeFeedType={handleChangeFeedType}
           followedChannels={followedChannels}
           onToggleFollow={handleToggleFollow}
+          onGoHome={() => dispatch({ type: 'EXIT_TO_LOBBY' })}
         />
+        </>
       )}
 
       <AnimatePresence>
-        {sessionState === 'BROWSING_RAIL' && (
+        {railOpen && sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && (
           <BentoRail
-            channels={feedType === 'FOLLOWING' ? MOCK_CHANNELS.filter(c => followedChannels[c.id]) : MOCK_CHANNELS}
+            channels={channels}
             currentChannelId={currentChannel.id}
             onSelectChannel={handleSelectChannel}
             onClose={handleCloseRail}
@@ -158,6 +352,7 @@ export default function App() {
         {sessionState === 'CHECKOUT_ACTIVE' && selectedProduct && (
           <CheckoutModal
             product={selectedProduct}
+            channelId={currentChannel.id}
             onClose={handleCloseCheckout}
             onComplete={handleCheckoutComplete}
           />
@@ -176,7 +371,7 @@ export default function App() {
 
       <AnimatePresence>
         {sessionState === 'PURCHASE_COMPLETE' && (
-          <SuccessModal onClose={handleCloseSuccess} />
+          <SuccessModal order={lastOrder} onClose={handleCloseSuccess} />
         )}
       </AnimatePresence>
 
@@ -185,9 +380,68 @@ export default function App() {
           <UserProfileModal 
             onClose={handleCloseProfile} 
             onOpenCreatorStudio={handleEnterCreator}
+            onOpenAuth={() => { handleCloseProfile(); setShowAuth(true); }}
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showAuth && (
+          <AuthModal onClose={() => setShowAuth(false)} />
+        )}
+      </AnimatePresence>
+
+      {sessionState === 'BROWSING_MARKETPLACE' && (
+        <MarketplaceBrowse
+          onViewProduct={handleViewProduct}
+          onOpenCart={() => setCartOpen(true)}
+          onGoHome={() => dispatch({ type: 'EXIT_TO_LOBBY' })}
+          cartCount={cart.count}
+          onWatchChannel={handleWatchChannel}
+        />
+      )}
+
+      {sessionState === 'VIEWING_PRODUCT' && marketplaceProduct && (
+        <ProductPage
+          product={marketplaceProduct}
+          onBack={handleBackToMarketplace}
+          onAddToCart={cart.addItem}
+          onOpenCart={() => setCartOpen(true)}
+          cartCount={cart.count}
+        />
+      )}
+
+      <AnimatePresence>
+        {cartOpen && (
+          <CartDrawer
+            items={cart.items}
+            total={cart.total}
+            onUpdateQuantity={cart.updateQuantity}
+            onRemoveItem={cart.removeItem}
+            onClose={() => setCartOpen(false)}
+            onCheckout={() => {
+              setCartOpen(false);
+              dispatch({ type: 'START_MARKETPLACE_CHECKOUT' });
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {sessionState === 'MARKETPLACE_CHECKOUT' && (
+        <MarketplaceCheckout
+          items={cart.items}
+          total={cart.total}
+          onBack={() => dispatch({ type: 'BACK_TO_MARKETPLACE' })}
+          onComplete={(order) => {
+            setLastOrder(order);
+            dispatch({ type: 'PURCHASE_DONE' });
+          }}
+          onClearCart={cart.clearCart}
+          userEmail={user?.email}
+          isLoggedIn={isLoggedIn}
+          onSignIn={() => { dispatch({ type: 'BACK_TO_MARKETPLACE' }); setShowAuth(true); }}
+        />
+      )}
     </div>
   );
 }

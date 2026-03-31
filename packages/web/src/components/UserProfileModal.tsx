@@ -1,12 +1,20 @@
 import { motion } from 'motion/react';
-import { X, Wallet, CreditCard, History, Settings, User } from 'lucide-react';
+import { X, Wallet, CreditCard, History, Settings, User, LogOut } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 type UserProfileModalProps = {
   onClose: () => void;
   onOpenCreatorStudio?: () => void;
+  onOpenAuth?: () => void;
 };
 
-export function UserProfileModal({ onClose, onOpenCreatorStudio }: UserProfileModalProps) {
+export function UserProfileModal({ onClose, onOpenCreatorStudio, onOpenAuth }: UserProfileModalProps) {
+  const { user, isLoggedIn, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    onClose();
+  };
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -19,9 +27,9 @@ export function UserProfileModal({ onClose, onOpenCreatorStudio }: UserProfileMo
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="w-full max-w-md overflow-hidden rounded-t-3xl bg-zinc-900 shadow-2xl sm:rounded-2xl"
+        className="w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden rounded-t-3xl bg-zinc-900 shadow-2xl sm:rounded-2xl"
       >
-        <div className="flex items-center justify-between border-b border-white/10 p-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 p-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <User className="text-indigo-400" />
             Profile & Wallet
@@ -34,17 +42,32 @@ export function UserProfileModal({ onClose, onOpenCreatorStudio }: UserProfileMo
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="overflow-y-auto overscroll-contain p-6">
+          {!isLoggedIn ? (
+            <div className="text-center py-8 space-y-4">
+              <div className="mx-auto h-16 w-16 rounded-full bg-zinc-800 flex items-center justify-center">
+                <User size={32} className="text-zinc-500" />
+              </div>
+              <p className="text-zinc-400">Sign in to access your profile, wallet, and purchase history.</p>
+              <button
+                onClick={() => { onClose(); onOpenAuth?.(); }}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-colors"
+              >
+                Sign In / Register
+              </button>
+            </div>
+          ) : (
+          <>
           {/* User Info */}
           <div className="flex items-center gap-4 mb-8">
             <img 
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" 
+              src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username ?? 'anon'}`}
               alt="User Avatar" 
               className="h-16 w-16 rounded-full bg-zinc-800 border-2 border-indigo-500"
             />
             <div>
-              <h3 className="text-xl font-bold text-white">Alex Shopper</h3>
-              <p className="text-sm text-zinc-400">@alex_finds</p>
+              <h3 className="text-xl font-bold text-white">{user?.display_name || user?.username || 'User'}</h3>
+              <p className="text-sm text-zinc-400">@{user?.username || 'anonymous'}</p>
             </div>
           </div>
 
@@ -102,7 +125,18 @@ export function UserProfileModal({ onClose, onOpenCreatorStudio }: UserProfileMo
                 <span className="font-medium">Account Settings</span>
               </div>
             </button>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 transition-colors text-left mt-2"
+            >
+              <div className="flex items-center gap-3 text-red-400">
+                <LogOut size={20} />
+                <span className="font-medium">Sign Out</span>
+              </div>
+            </button>
           </div>
+          </>
+          )}
         </div>
       </motion.div>
     </motion.div>
