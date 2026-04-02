@@ -105,7 +105,9 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [marketplaceProduct, setMarketplaceProduct] = useState<Product | null>(null);
+  const [productViewOrigin, setProductViewOrigin] = useState<SessionState>('BROWSING_MARKETPLACE');
   const [cartOpen, setCartOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const cart = useCart();
 
   // Sync current channel to primary when data loads
@@ -266,14 +268,26 @@ export default function App() {
     dispatch({ type: 'ENTER_MARKETPLACE' });
   };
 
-  const handleViewProduct = (product: Product) => {
-    setMarketplaceProduct(product);
+  const handleViewProduct = async (product: Product) => {
+    setProductViewOrigin(sessionState);      // remember where user came from
+    setMarketplaceProduct(product);          // show immediately with basic data
     dispatch({ type: 'VIEW_PRODUCT' });
+    try {
+      const full = await api.getProductFull(product.id);
+      setMarketplaceProduct(full);           // replace with rich data once loaded
+    } catch {
+      // keep basic product if full fetch fails
+    }
   };
 
-  const handleBackToMarketplace = () => {
+  const handleBackFromProduct = () => {
     setMarketplaceProduct(null);
-    dispatch({ type: 'BACK_TO_MARKETPLACE' });
+    // Return to the context the user came from
+    if (productViewOrigin === 'WATCHING_PC' || productViewOrigin === 'BROWSING_RAIL') {
+      dispatch({ type: 'CLOSE_MODAL' });    // returns to WATCHING_PC
+    } else {
+      dispatch({ type: 'BACK_TO_MARKETPLACE' });
+    }
   };
 
   const handleWatchChannel = useCallback((channelId: string) => {
@@ -323,16 +337,20 @@ export default function App() {
           <LiveView
           channel={currentChannel}
           onBuy={handleBuy}
+          onViewProduct={handleViewProduct}
           onOpenRail={handleOpenRail}
           onOpenProfile={handleOpenProfile}
           onNextChannel={handleNextChannel}
           onPrevChannel={handlePrevChannel}
-          isPiP={sessionState === 'CHECKOUT_ACTIVE' || sessionState === 'BIDDING_ACTIVE' || sessionState === 'PURCHASE_COMPLETE' || sessionState === 'USER_PROFILE'}
+          isPiP={sessionState === 'CHECKOUT_ACTIVE' || sessionState === 'BIDDING_ACTIVE' || sessionState === 'PURCHASE_COMPLETE' || sessionState === 'USER_PROFILE' || sessionState === 'VIEWING_PRODUCT'}
           feedType={feedType}
           onChangeFeedType={handleChangeFeedType}
           followedChannels={followedChannels}
           onToggleFollow={handleToggleFollow}
           onGoHome={() => dispatch({ type: 'EXIT_TO_LOBBY' })}
+          onGoToShop={() => dispatch({ type: 'ENTER_MARKETPLACE' })}
+          onOpenCart={() => setCartOpen(true)}
+          cartCount={cart.count}
         />
         </>
       )}
@@ -355,6 +373,9 @@ export default function App() {
             channelId={currentChannel.id}
             onClose={handleCloseCheckout}
             onComplete={handleCheckoutComplete}
+            onAddToCart={cart.addItem}
+            onOpenCart={() => setCartOpen(true)}
+            cartCount={cart.count}
           />
         )}
       </AnimatePresence>
@@ -398,15 +419,31 @@ export default function App() {
           onGoHome={() => dispatch({ type: 'EXIT_TO_LOBBY' })}
           cartCount={cart.count}
           onWatchChannel={handleWatchChannel}
+          onOpenProfile={() => setShowProfileModal(true)}
+          onOpenRail={handleOpenRail}
+          onGoToCreatorStudio={() => dispatch({ type: 'ENTER_CREATOR' })}
+          onGoToLiveView={() => dispatch({ type: 'CLOSE_RAIL' })}
         />
       )}
+
+      {/* Profile modal overlay for marketplace */}
+      <AnimatePresence>
+        {showProfileModal && sessionState === 'BROWSING_MARKETPLACE' && (
+          <UserProfileModal
+            onClose={() => setShowProfileModal(false)}
+            onOpenCreatorStudio={() => { setShowProfileModal(false); handleEnterCreator(); }}
+            onOpenAuth={() => { setShowProfileModal(false); setShowAuth(true); }}
+          />
+        )}
+      </AnimatePresence>
 
       {sessionState === 'VIEWING_PRODUCT' && marketplaceProduct && (
         <ProductPage
           product={marketplaceProduct}
-          onBack={handleBackToMarketplace}
+          onBack={handleBackFromProduct}
           onAddToCart={cart.addItem}
           onOpenCart={() => setCartOpen(true)}
+          onViewProduct={handleViewProduct}
           cartCount={cart.count}
         />
       )}
@@ -419,6 +456,10 @@ export default function App() {
             onUpdateQuantity={cart.updateQuantity}
             onRemoveItem={cart.removeItem}
             onClose={() => setCartOpen(false)}
+            onViewProduct={(product) => {
+              setCartOpen(false);
+              handleViewProduct(product);
+            }}
             onCheckout={() => {
               setCartOpen(false);
               dispatch({ type: 'START_MARKETPLACE_CHECKOUT' });

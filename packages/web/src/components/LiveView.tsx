@@ -1,6 +1,6 @@
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { Channel, Product } from '../data/mockData';
-import { ShoppingBag, Heart, Share2, MessageCircle, Sparkles, X, Send, User, Gavel, Timer, Gift, HelpCircle, Bell, BellRing, ChevronUp, ChevronDown, Volume2, VolumeX } from 'lucide-react';
+import { Heart, Share2, MessageCircle, Sparkles, X, Send, User, Gavel, Timer, Gift, HelpCircle, Bell, BellRing, ChevronUp, ChevronDown, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
 import { ButterflyIcon } from './ButterflyIcon';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ShareSheet } from './ShareSheet';
@@ -12,6 +12,7 @@ import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
 type LiveViewProps = {
   channel: Channel;
   onBuy: (product: Product) => void;
+  onViewProduct?: (product: Product) => void;
   onOpenRail: () => void;
   onOpenProfile: () => void;
   onNextChannel?: () => void;
@@ -22,11 +23,15 @@ type LiveViewProps = {
   followedChannels?: Record<string, boolean>;
   onToggleFollow?: (channelId: string) => void;
   onGoHome?: () => void;
+  onGoToShop?: () => void;
+  onOpenCart?: () => void;
+  cartCount?: number;
 };
 
 export function LiveView({ 
   channel, 
   onBuy, 
+  onViewProduct,
   onOpenRail, 
   onOpenProfile, 
   onNextChannel, 
@@ -36,8 +41,12 @@ export function LiveView({
   onChangeFeedType,
   followedChannels = {},
   onToggleFollow,
-  onGoHome
+  onGoHome,
+  onGoToShop,
+  onOpenCart,
+  cartCount = 0
 }: LiveViewProps) {
+  const [butterflyHovered, setButterflyHovered] = useState(false);
   const [showRelayQuery, setShowRelayQuery] = useState(false);
   const [query, setQuery] = useState('');
   const [relayStatus, setRelayStatus] = useState<'idle' | 'searching' | 'found' | 'empty'>('idle');
@@ -155,12 +164,14 @@ export function LiveView({
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [volume, setVolume] = useState(80);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hlsPlayerRef = useRef<HlsPlayerHandle>(null);
   const [isStreamLive, setIsStreamLive] = useState(false);
+  const [isCinematic, setIsCinematic] = useState(false);
+  const [showUnmuteHint, setShowUnmuteHint] = useState(true);
 
-  const isHlsStream = channel.streamUrl?.includes('.m3u8');
+  const isHlsStream = channel.streamUrl?.includes('.m3u8') || /\.(mp4|webm|ogg)(\?|$)/i.test(channel.streamUrl ?? '');
 
   const handleMouseActivity = () => {
     setShowControls(true);
@@ -214,6 +225,21 @@ export function LiveView({
             </div>
           </div>
         )}
+        {/* Tap to unmute hint */}
+        {isStreamLive && isMuted && showUnmuteHint && !isPiP && (
+          <button
+            onClick={() => {
+              setIsMuted(false);
+              hlsPlayerRef.current?.setMuted(false);
+              hlsPlayerRef.current?.setVolume(volume / 100);
+              setShowUnmuteHint(false);
+            }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 backdrop-blur-md border border-white/20 text-white/90 text-sm font-medium hover:bg-black/80 transition-colors"
+          >
+            <VolumeX size={16} />
+            Tap to unmute
+          </button>
+        )}
         {isPiP && (
           <div className="absolute top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
             {channel.type}
@@ -221,7 +247,7 @@ export function LiveView({
         )}
       </motion.div>
 
-      {/* UI Overlay (Hidden when in PiP mode) */}
+      {/* UI Overlay (Hidden when in PiP mode, fades in cinematic) */}
       <AnimatePresence>
         {!isPiP && (
           <motion.div
@@ -230,6 +256,12 @@ export function LiveView({
             exit={{ opacity: 0 }}
             className="absolute inset-0 pointer-events-none"
           >
+            {/* Cinematic mode: hide everything except controls on hover */}
+            <motion.div
+              animate={{ opacity: isCinematic && !showControls ? 0 : 1 }}
+              transition={{ duration: 0.4 }}
+              className="absolute inset-0 pointer-events-none"
+            >
             <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80" />
 
             {/* Massive Gift Animations */}
@@ -262,7 +294,7 @@ export function LiveView({
               >
                 <ButterflyIcon size={24} />
               </button>
-              {/* For You / Following Tabs */}
+              {/* Following / For You / Shop Tabs */}
               <div className="absolute top-12 left-1/2 -translate-x-1/2 flex items-center gap-4 drop-shadow-md">
                 <button 
                   onClick={() => onChangeFeedType?.('FOLLOWING')}
@@ -278,6 +310,13 @@ export function LiveView({
                 >
                   For You
                   {feedType === 'FOR_YOU' && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-1 bg-white rounded-full" />}
+                </button>
+                <div className="h-4 w-px bg-white/30" />
+                <button 
+                  onClick={() => onGoToShop?.()}
+                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                >
+                  Shop
                 </button>
               </div>
 
@@ -347,6 +386,26 @@ export function LiveView({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={onOpenCart}
+                  onMouseEnter={() => setButterflyHovered(true)}
+                  onMouseLeave={() => setButterflyHovered(false)}
+                  className="relative rounded-full bg-white/10 p-2 backdrop-blur-md transition-colors hover:bg-white/20"
+                  style={(butterflyHovered || cartCount > 0) ? {
+                    filter: 'drop-shadow(0 0 10px rgba(251, 191, 36, 0.7)) drop-shadow(0 0 20px rgba(99, 102, 241, 0.4))',
+                  } : undefined}
+                >
+                  <ButterflyIcon size={20} hovered={butterflyHovered || cartCount > 0} />
+                  {cartCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[9px] font-bold text-white shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+                    >
+                      {cartCount}
+                    </motion.span>
+                  )}
+                </button>
                 <button
                   onClick={onOpenProfile}
                   className="rounded-full bg-white/10 p-2 backdrop-blur-md transition-colors hover:bg-white/20"
@@ -615,12 +674,20 @@ export function LiveView({
                           setIsMuted(m => {
                             const newMuted = !m;
                             hlsPlayerRef.current?.setMuted(newMuted);
+                            if (!newMuted) setShowUnmuteHint(false);
                             return newMuted;
                           });
                         }}
                         className="rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors"
                       >
                         {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                      </button>
+                      <button
+                        onClick={() => setIsCinematic(c => !c)}
+                        className="rounded-full bg-black/40 p-2 backdrop-blur-md text-white/80 hover:bg-black/60 hover:text-white transition-colors"
+                        title={isCinematic ? 'Exit cinematic' : 'Cinematic mode'}
+                      >
+                        {isCinematic ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                       </button>
                     </motion.div>
                   )}
@@ -696,7 +763,8 @@ export function LiveView({
                       <motion.div
                         key={product.id}
                         whileHover={{ scale: 1.02 }}
-                        className="flex min-w-[280px] snap-center items-center gap-3 rounded-2xl bg-white/10 p-3 backdrop-blur-xl border border-white/10"
+                        onClick={() => onViewProduct?.(product)}
+                        className="flex min-w-[280px] snap-center items-center gap-3 rounded-2xl bg-white/10 p-3 backdrop-blur-xl border border-white/10 cursor-pointer"
                       >
                         <img src={product.mediaUrl} alt={product.name} className="h-16 w-16 rounded-xl object-cover pointer-events-none" />
                         <div className="flex-1">
@@ -713,7 +781,7 @@ export function LiveView({
                           )}
                         </div>
                         <button
-                          onClick={() => onBuy(product)}
+                          onClick={(e) => { e.stopPropagation(); onBuy(product); }}
                           className={`flex h-10 px-4 items-center justify-center rounded-full text-sm font-bold transition-transform active:scale-95 ${
                             product.saleType === 'auction' ? 'bg-red-500 text-white' :
                             product.saleType === 'drop' ? 'bg-indigo-500 text-white' :
@@ -722,7 +790,7 @@ export function LiveView({
                         >
                           {product.saleType === 'auction' ? <Gavel size={18} /> :
                            product.saleType === 'drop' ? 'Drop' :
-                           <ShoppingBag size={18} />}
+                           <ButterflyIcon size={18} />}
                         </button>
                       </motion.div>
                     ))}
@@ -896,6 +964,7 @@ export function LiveView({
                 </AnimatePresence>
               </>
             )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

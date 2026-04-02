@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
-import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
+import { X, Minus, Plus, Trash2 } from 'lucide-react';
+import { ButterflyIcon } from './ButterflyIcon';
 import type { LocalCartItem } from '../hooks/useCart';
 
 type Props = {
@@ -9,9 +10,10 @@ type Props = {
   onRemoveItem: (productId: string) => void;
   onClose: () => void;
   onCheckout: () => void;
+  onViewProduct?: (product: LocalCartItem['product']) => void;
 };
 
-export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClose, onCheckout }: Props) {
+export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClose, onCheckout, onViewProduct }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -42,7 +44,7 @@ export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClo
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-white/30">
-              <ShoppingBag size={48} className="mb-4" />
+              <ButterflyIcon size={48} />
               <p className="text-sm">Your cart is empty</p>
             </div>
           ) : (
@@ -51,16 +53,24 @@ export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClo
                 key={item.product.id}
                 className="flex gap-3 rounded-xl bg-white/5 p-3 border border-white/10"
               >
-                {/* Thumbnail */}
-                <div className="h-16 w-16 flex-shrink-0 rounded-lg bg-white/10 overflow-hidden">
+                {/* Thumbnail — clickable */}
+                <button
+                  onClick={() => onViewProduct?.(item.product)}
+                  className="h-16 w-16 flex-shrink-0 rounded-lg bg-white/10 overflow-hidden hover:ring-2 hover:ring-indigo-500/50 transition-all cursor-pointer"
+                >
                   {item.product.mediaUrl && (
                     <img src={item.product.mediaUrl} alt={item.product.name} className="h-full w-full object-cover" />
                   )}
-                </div>
+                </button>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{item.product.name}</p>
+                  <button
+                    onClick={() => onViewProduct?.(item.product)}
+                    className="text-sm font-medium text-white truncate block text-left hover:text-indigo-300 transition-colors cursor-pointer"
+                  >
+                    {item.product.name}
+                  </button>
                   <p className="text-sm text-indigo-400 font-bold">
                     ${item.product.price.toFixed(2)}
                   </p>

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Search, ShoppingCart, ArrowLeft, TrendingUp, Flame, Sparkles,
-  Clock, Gavel, Radio, ChevronRight, Eye, SlidersHorizontal, X, Zap,
-  Tag, Star, Package,
+  Search, ArrowLeft, TrendingUp, Flame, Sparkles,
+  Clock, Gavel, Radio, ChevronRight, ChevronDown, Eye, SlidersHorizontal, X, Zap,
+  Tag, Star, Package, User, LayoutGrid, Tv,
 } from 'lucide-react';
 import * as api from '../services/api';
 import type { Product } from '../data/mockData';
 import type { MappedGateway, GatewayChannel } from '../services/api';
+import { ButterflyIcon } from './ButterflyIcon';
 
 /* ── Constants ────────────────────────────────────────── */
 const CONDITIONS = ['All', 'new', 'like_new', 'good', 'fair'] as const;
@@ -24,6 +25,10 @@ type Props = {
   onGoHome: () => void;
   cartCount: number;
   onWatchChannel?: (channelId: string) => void;
+  onOpenProfile?: () => void;
+  onOpenRail?: () => void;
+  onGoToCreatorStudio?: () => void;
+  onGoToLiveView?: () => void;
 };
 
 /* ── Section Header ───────────────────────────────────── */
@@ -425,11 +430,13 @@ function SearchResults({
    ██  MAIN COMPONENT — Marketplace Gateway
    ══════════════════════════════════════════════════════════ */
 
-export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCount, onWatchChannel }: Props) {
+export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCount, onWatchChannel, onOpenProfile, onOpenRail, onGoToCreatorStudio, onGoToLiveView }: Props) {
   /* ── State ── */
   const [gateway, setGateway] = useState<MappedGateway | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [butterflyHovered, setButterflyHovered] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   // Search state
   const [query, setQuery] = useState('');
@@ -526,20 +533,22 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
   return (
     <div className="fixed inset-0 z-40 flex flex-col overflow-hidden" style={{ backgroundColor: '#0A0A0F' }}>
       {/* ── Header ── */}
-      <header className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-white/[0.06]
+      <header className="flex items-center gap-2 px-4 sm:px-6 py-3 border-b border-white/[0.06]
         bg-[#0A0A0F]/80 backdrop-blur-xl sticky top-0 z-50">
+        {/* Home / back to Shop */}
         <button
           onClick={onGoHome}
           className="p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
+          title="Home"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={18} />
         </button>
 
-        {/* Search bar */}
-        <form onSubmit={handleSearchSubmit} className="flex-1 relative">
+        {/* Search bar — reduced width */}
+        <form onSubmit={handleSearchSubmit} className="flex-1 max-w-sm relative">
           <div className="flex items-center gap-2 rounded-xl bg-white/[0.06] border border-white/[0.08]
             px-3 py-2 focus-within:border-indigo-500/50 focus-within:bg-white/[0.08] transition-all">
-            <Search size={16} className="text-white/30" />
+            <Search size={14} className="text-white/30" />
             <input
               ref={searchInputRef}
               type="text"
@@ -550,24 +559,123 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
             />
             {(query || searchActive) && (
               <button type="button" onClick={clearSearch} className="text-white/30 hover:text-white/60">
-                <X size={16} />
+                <X size={14} />
               </button>
             )}
           </div>
         </form>
 
-        <button
-          onClick={onOpenCart}
-          className="relative p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
-        >
-          <ShoppingCart size={20} />
-          {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full
-              bg-indigo-500 text-[10px] font-bold text-white shadow-lg shadow-indigo-500/30">
-              {cartCount}
-            </span>
-          )}
-        </button>
+        {/* Spacer to push icons right */}
+        <div className="flex-1" />
+
+        {/* Nav icons — right side */}
+        <div className="flex items-center gap-1">
+          {/* LiveView */}
+          <button
+            onClick={onGoToLiveView}
+            className="p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
+            title="Live Channels"
+          >
+            <Tv size={18} />
+          </button>
+
+          {/* Creator Studio */}
+          <button
+            onClick={onGoToCreatorStudio}
+            className="p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
+            title="Creator Studio"
+          >
+            <Radio size={18} />
+          </button>
+
+          {/* Categories dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setCategoriesOpen(prev => !prev)}
+              className={`flex items-center gap-1 p-2 rounded-xl hover:bg-white/[0.08] transition-colors ${
+                categoriesOpen ? 'text-white bg-white/[0.08]' : 'text-white/50 hover:text-white'
+              }`}
+              title="Categories"
+            >
+              <LayoutGrid size={18} />
+              <ChevronDown size={14} className={`transition-transform duration-200 ${categoriesOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <AnimatePresence>
+              {categoriesOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-[#1A1A2E] border border-white/[0.08]
+                    shadow-2xl shadow-black/60 overflow-hidden z-[60]"
+                >
+                  <div className="px-3 py-2 border-b border-white/[0.06]">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Browse Categories</span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto py-1">
+                    {gateway?.categories.map(cat => (
+                      <button
+                        key={cat.name}
+                        onClick={() => { handleCategoryClick(cat.name); setCategoriesOpen(false); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors ${
+                          activeCategory === cat.name
+                            ? 'bg-indigo-600/20 text-indigo-300'
+                            : 'text-white/70 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                      >
+                        <span className="text-base">{cat.icon}</span>
+                        <span className="flex-1 text-left">{cat.name}</span>
+                        <span className={`text-[11px] rounded-full px-2 py-0.5 ${
+                          activeCategory === cat.name
+                            ? 'bg-indigo-500/30 text-indigo-200'
+                            : 'bg-white/[0.06] text-white/40'
+                        }`}>{cat.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {/* Click-away to close */}
+            {categoriesOpen && (
+              <div className="fixed inset-0 z-[55]" onClick={() => setCategoriesOpen(false)} />
+            )}
+          </div>
+
+          {/* Profile */}
+          <button
+            onClick={onOpenProfile}
+            className="p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
+            title="Profile"
+          >
+            <User size={18} />
+          </button>
+
+          {/* Butterfly Cart — animated */}
+          <button
+            onClick={onOpenCart}
+            onMouseEnter={() => setButterflyHovered(true)}
+            onMouseLeave={() => setButterflyHovered(false)}
+            className="relative p-2 rounded-xl hover:bg-white/[0.08] transition-colors"
+            style={cartCount > 0 ? {
+              filter: 'drop-shadow(0 0 12px rgba(251, 191, 36, 0.7)) drop-shadow(0 0 24px rgba(99, 102, 241, 0.4))',
+            } : undefined}
+            title="Cart"
+          >
+            <ButterflyIcon size={20} hovered={butterflyHovered || cartCount > 0} />
+            {cartCount > 0 && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full
+                  bg-green-500 text-[10px] font-bold text-white shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+              >
+                {cartCount}
+              </motion.span>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* ── Content ── */}

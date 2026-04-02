@@ -6,6 +6,18 @@ packages/*/node_modules/
 dist/
 packages/*/dist/
 backend/greggie-backend
+backend/greggie-backend.exe
+/greggie-backend
+build-result.txt
+packages/*/build-result.txt
+packages/*/.build-log.txt
+
+# Expo
+.expo/
+packages/*/.expo/
+
+# Lock files (pnpm-lock.yaml is tracked)
+package-lock.json
 
 # Environment
 .env

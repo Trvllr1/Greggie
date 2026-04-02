@@ -54,31 +54,46 @@ type Merchant struct {
 }
 
 type Product struct {
-	ID                  string         `json:"id"`
-	ChannelID           string         `json:"channel_id"`
-	ShopID              *string        `json:"shop_id,omitempty"`
-	Name                string         `json:"name"`
-	Description         string         `json:"description"`
-	ImageURL            string         `json:"image_url"`
-	PriceCents          int64          `json:"price_cents"`
-	OriginalPrice       *int64         `json:"original_price_cents,omitempty"`
-	Inventory           int            `json:"inventory"`
-	SaleType            string         `json:"sale_type"`
-	IsPinned            bool           `json:"is_pinned"`
-	AuctionEndAt        *time.Time     `json:"auction_end_at,omitempty"`
-	DropAt              *time.Time     `json:"drop_at,omitempty"`
-	AuctionStatus       string         `json:"auction_status,omitempty"`
-	AuctionReserveCents int64          `json:"auction_reserve_cents,omitempty"`
-	AuctionWinnerID     *string        `json:"auction_winner_id,omitempty"`
-	CurrentBidCents     int64          `json:"current_bid_cents,omitempty"`
-	HighestBidderID     *string        `json:"highest_bidder_id,omitempty"`
-	BidCount            int            `json:"bid_count,omitempty"`
-	Condition           string         `json:"condition,omitempty"`
-	ListingStatus       string         `json:"listing_status,omitempty"`
-	Tags                []string       `json:"tags,omitempty"`
-	Brand               string         `json:"brand,omitempty"`
-	Images              []ProductImage `json:"images,omitempty"`
-	CreatedAt           time.Time      `json:"created_at"`
+	ID                  string                `json:"id"`
+	ChannelID           string                `json:"channel_id"`
+	ShopID              *string               `json:"shop_id,omitempty"`
+	Name                string                `json:"name"`
+	Description         string                `json:"description"`
+	ImageURL            string                `json:"image_url"`
+	PriceCents          int64                 `json:"price_cents"`
+	OriginalPrice       *int64                `json:"original_price_cents,omitempty"`
+	Inventory           int                   `json:"inventory"`
+	SaleType            string                `json:"sale_type"`
+	IsPinned            bool                  `json:"is_pinned"`
+	AuctionEndAt        *time.Time            `json:"auction_end_at,omitempty"`
+	DropAt              *time.Time            `json:"drop_at,omitempty"`
+	AuctionStatus       string                `json:"auction_status,omitempty"`
+	AuctionReserveCents int64                 `json:"auction_reserve_cents,omitempty"`
+	AuctionWinnerID     *string               `json:"auction_winner_id,omitempty"`
+	CurrentBidCents     int64                 `json:"current_bid_cents,omitempty"`
+	HighestBidderID     *string               `json:"highest_bidder_id,omitempty"`
+	BidCount            int                   `json:"bid_count,omitempty"`
+	Condition           string                `json:"condition,omitempty"`
+	ListingStatus       string                `json:"listing_status,omitempty"`
+	Tags                []string              `json:"tags,omitempty"`
+	Brand               string                `json:"brand,omitempty"`
+	Images              []ProductImage        `json:"images,omitempty"`
+	Category            string                `json:"category,omitempty"`
+	Subcategory         string                `json:"subcategory,omitempty"`
+	ReturnDays          int                   `json:"return_days,omitempty"`
+	WarrantyInfo        string                `json:"warranty_info,omitempty"`
+	IsDigital           bool                  `json:"is_digital,omitempty"`
+	BulletPoints        []string              `json:"bullet_points,omitempty"`
+	ReviewCount         int                   `json:"review_count"`
+	ReviewAvg           float64               `json:"review_avg"`
+	Variants            []ProductVariant      `json:"variants,omitempty"`
+	VariantGroups       []ProductVariantGroup `json:"variant_groups,omitempty"`
+	Specs               []ProductSpec         `json:"specs,omitempty"`
+	Shipping            *ProductShipping      `json:"shipping,omitempty"`
+	RelatedProducts     []Product             `json:"related_products,omitempty"`
+	Bundles             []ProductBundle       `json:"bundles,omitempty"`
+	Reviews             []ProductReview       `json:"reviews,omitempty"`
+	CreatedAt           time.Time             `json:"created_at"`
 }
 
 type Bid struct {
@@ -358,6 +373,91 @@ type ProductImage struct {
 	URL       string    `json:"url"`
 	Position  int       `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type ProductVariantGroup struct {
+	ID        string                 `json:"id"`
+	ProductID string                 `json:"product_id"`
+	Name      string                 `json:"name"`
+	Position  int                    `json:"position"`
+	Options   []ProductVariantOption `json:"options"`
+}
+
+type ProductVariantOption struct {
+	ID       string `json:"id"`
+	GroupID  string `json:"group_id"`
+	Label    string `json:"label"`
+	Value    string `json:"value"`
+	Position int    `json:"position"`
+}
+
+type ProductVariant struct {
+	ID         string   `json:"id"`
+	ProductID  string   `json:"product_id"`
+	SKU        string   `json:"sku,omitempty"`
+	PriceCents *int64   `json:"price_cents,omitempty"`
+	Inventory  int      `json:"inventory"`
+	ImageURL   string   `json:"image_url,omitempty"`
+	IsDefault  bool     `json:"is_default"`
+	OptionIDs  []string `json:"option_ids,omitempty"`
+}
+
+type ProductShipping struct {
+	ID               string  `json:"id"`
+	ProductID        string  `json:"product_id"`
+	WeightOz         float64 `json:"weight_oz,omitempty"`
+	LengthIn         float64 `json:"length_in,omitempty"`
+	WidthIn          float64 `json:"width_in,omitempty"`
+	HeightIn         float64 `json:"height_in,omitempty"`
+	ShippingClass    string  `json:"shipping_class"`
+	FreeShipping     bool    `json:"free_shipping"`
+	FlatRateCents    *int64  `json:"flat_rate_cents,omitempty"`
+	ShipsFromCountry string  `json:"ships_from_country"`
+	ShipsFromState   string  `json:"ships_from_state,omitempty"`
+	HandlingDays     int     `json:"handling_days"`
+	EstDaysMin       int     `json:"estimated_days_min"`
+	EstDaysMax       int     `json:"estimated_days_max"`
+}
+
+type ProductReview struct {
+	ID               string   `json:"id"`
+	ProductID        string   `json:"product_id"`
+	UserID           *string  `json:"user_id,omitempty"`
+	UserName         string   `json:"user_name,omitempty"`
+	Rating           int      `json:"rating"`
+	Title            string   `json:"title"`
+	Body             string   `json:"body"`
+	VerifiedPurchase bool     `json:"verified_purchase"`
+	HelpfulCount     int      `json:"helpful_count"`
+	Images           []string `json:"images,omitempty"`
+	CreatedAt        string   `json:"created_at"`
+}
+
+type ProductSpec struct {
+	ID        string `json:"id"`
+	ProductID string `json:"product_id"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Position  int    `json:"position"`
+}
+
+type ProductBundle struct {
+	ID            string              `json:"id"`
+	Name          string              `json:"name"`
+	Description   string              `json:"description"`
+	DiscountPct   float64             `json:"discount_pct"`
+	DiscountCents int64               `json:"discount_cents"`
+	IsActive      bool                `json:"is_active"`
+	Items         []ProductBundleItem `json:"items"`
+}
+
+type ProductBundleItem struct {
+	ID        string   `json:"id"`
+	BundleID  string   `json:"bundle_id"`
+	ProductID string   `json:"product_id"`
+	Product   *Product `json:"product,omitempty"`
+	Quantity  int      `json:"quantity"`
+	Position  int      `json:"position"`
 }
 
 type CreateShopRequest struct {

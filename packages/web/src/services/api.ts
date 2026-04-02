@@ -53,6 +53,75 @@ interface ApiMerchant {
   avatar: string;
 }
 
+interface ApiVariantOption {
+  id: string;
+  group_id: string;
+  label: string;
+  value: string;
+  position: number;
+}
+
+interface ApiVariantGroup {
+  id: string;
+  product_id: string;
+  name: string;
+  position: number;
+  options: ApiVariantOption[];
+}
+
+interface ApiVariant {
+  id: string;
+  product_id: string;
+  sku?: string;
+  price_cents?: number;
+  inventory: number;
+  image_url?: string;
+  is_default: boolean;
+  option_ids: string[];
+}
+
+interface ApiShipping {
+  free_shipping: boolean;
+  shipping_class: string;
+  flat_rate_cents?: number;
+  ships_from_country: string;
+  ships_from_state?: string;
+  handling_days: number;
+  estimated_days_min: number;
+  estimated_days_max: number;
+}
+
+interface ApiReview {
+  id: string;
+  user_name?: string;
+  rating: number;
+  title: string;
+  body: string;
+  verified_purchase: boolean;
+  helpful_count: number;
+  images?: string[];
+  created_at: string;
+}
+
+interface ApiSpec {
+  key: string;
+  value: string;
+}
+
+interface ApiBundleItem {
+  product?: ApiProduct;
+  quantity: number;
+}
+
+interface ApiBundle {
+  id: string;
+  name: string;
+  description: string;
+  discount_pct: number;
+  discount_cents: number;
+  items: ApiBundleItem[];
+}
+
 interface ApiProduct {
   id: string;
   channel_id: string;
@@ -73,6 +142,26 @@ interface ApiProduct {
   auction_winner_id?: string;
   bid_count?: number;
   created_at: string;
+  // Rich product fields
+  brand?: string;
+  condition?: string;
+  category?: string;
+  subcategory?: string;
+  tags?: string[];
+  images?: { id: string; product_id: string; url: string; position: number }[];
+  bullet_points?: string[];
+  return_days?: number;
+  warranty_info?: string;
+  is_digital?: boolean;
+  review_count?: number;
+  review_avg?: number;
+  variant_groups?: ApiVariantGroup[];
+  variants?: ApiVariant[];
+  specs?: ApiSpec[];
+  shipping?: ApiShipping;
+  reviews?: ApiReview[];
+  related_products?: ApiProduct[];
+  bundles?: ApiBundle[];
 }
 
 interface ApiChannel {
@@ -123,6 +212,77 @@ function mapProduct(p: ApiProduct): Product {
     highestBidder: p.highest_bidder_id ?? undefined,
     auctionStatus: p.auction_status,
     bidCount: p.bid_count ?? 0,
+    // Rich product fields
+    brand: p.brand,
+    condition: p.condition as Product['condition'],
+    category: p.category,
+    subcategory: p.subcategory,
+    tags: p.tags,
+    images: p.images?.map(img => img.url),
+    bulletPoints: p.bullet_points,
+    returnDays: p.return_days,
+    warrantyInfo: p.warranty_info,
+    isDigital: p.is_digital,
+    reviewCount: p.review_count ?? 0,
+    reviewAvg: p.review_avg ?? 0,
+    variantGroups: p.variant_groups?.map(g => ({
+      id: g.id,
+      productId: g.product_id,
+      name: g.name,
+      position: g.position,
+      options: g.options.map(o => ({
+        id: o.id,
+        groupId: o.group_id,
+        label: o.label,
+        value: o.value,
+        position: o.position,
+      })),
+    })),
+    variants: p.variants?.map(v => ({
+      id: v.id,
+      productId: v.product_id,
+      sku: v.sku,
+      priceCents: v.price_cents,
+      price: v.price_cents ? v.price_cents / 100 : undefined,
+      inventory: v.inventory,
+      imageUrl: v.image_url,
+      isDefault: v.is_default,
+      optionIds: v.option_ids,
+    })),
+    specs: p.specs,
+    shipping: p.shipping ? {
+      freeShipping: p.shipping.free_shipping,
+      shippingClass: p.shipping.shipping_class as any,
+      flatRateCents: p.shipping.flat_rate_cents,
+      shipsFromCountry: p.shipping.ships_from_country,
+      shipsFromState: p.shipping.ships_from_state,
+      handlingDays: p.shipping.handling_days,
+      estimatedDaysMin: p.shipping.estimated_days_min,
+      estimatedDaysMax: p.shipping.estimated_days_max,
+    } : undefined,
+    reviews: p.reviews?.map(r => ({
+      id: r.id,
+      userName: r.user_name,
+      rating: r.rating,
+      title: r.title,
+      body: r.body,
+      verifiedPurchase: r.verified_purchase,
+      helpfulCount: r.helpful_count,
+      images: r.images,
+      createdAt: r.created_at,
+    })),
+    relatedProducts: p.related_products?.map(mapProduct),
+    bundles: p.bundles?.map(b => ({
+      id: b.id,
+      name: b.name,
+      description: b.description,
+      discountPct: b.discount_pct,
+      discountCents: b.discount_cents,
+      items: b.items.map(i => ({
+        product: i.product ? mapProduct(i.product) : undefined,
+        quantity: i.quantity,
+      })),
+    })),
   };
 }
 
@@ -132,6 +292,7 @@ function mapChannel(c: ApiChannel): Channel {
     title: c.title,
     type: c.status as Channel['type'],
     streamUrl: c.stream_url || c.thumbnail_url,
+    thumbnailUrl: c.thumbnail_url,
     viewers: c.viewer_count,
     badge: c.badge || undefined,
     category: c.category,
@@ -206,6 +367,39 @@ export async function getProduct(id: string): Promise<Product> {
 export async function getChannelProducts(channelId: string): Promise<Product[]> {
   const raw = await apiFetch<ApiProduct[]>(`/channels/${channelId}/products`);
   return raw.map(mapProduct);
+}
+
+// Full product detail (includes variants, shipping, reviews, specs, bundles, relations)
+export async function getProductFull(id: string): Promise<Product> {
+  const raw = await apiFetch<ApiProduct>(`/products/${id}/full`);
+  return mapProduct(raw);
+}
+
+// Reviews
+export async function getProductReviews(productId: string, limit = 10, offset = 0): Promise<Product['reviews']> {
+  const raw = await apiFetch<ApiReview[]>(`/products/${productId}/reviews?limit=${limit}&offset=${offset}`);
+  return raw.map(r => ({
+    id: r.id,
+    userName: r.user_name,
+    rating: r.rating,
+    title: r.title,
+    body: r.body,
+    verifiedPurchase: r.verified_purchase,
+    helpfulCount: r.helpful_count,
+    images: r.images,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function submitReview(productId: string, data: { rating: number; title: string; body: string; images?: string[] }) {
+  return apiFetch<{ id: string }>(`/products/${productId}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function markReviewHelpful(reviewId: string) {
+  return apiFetch<{ helpful_count: number }>(`/reviews/${reviewId}/helpful`, { method: 'POST' });
 }
 
 // ── Relay ─────────────────────────────────────────────

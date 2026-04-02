@@ -67,7 +67,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
         <div className="flex items-center justify-between border-b border-white/10 p-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             {mode === 'login' ? <LogIn size={20} className="text-indigo-400" /> : <UserPlus size={20} className="text-indigo-400" />}
-            {mode === 'login' ? 'Sign In' : 'Create Account'}
+            {mode === 'login' ? 'Gregg In' : 'Create Account'}
           </h2>
           <button
             onClick={onClose}
@@ -125,7 +125,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
             disabled={loading}
             className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-colors disabled:opacity-60"
           >
-            {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+            {loading ? 'Please wait…' : mode === 'login' ? 'Gregg In' : 'Create Account'}
           </button>
 
           <div className="relative">
@@ -157,7 +157,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
             ) : (
               <>Already have an account?{' '}
                 <button type="button" onClick={() => setMode('login')} className="text-indigo-400 hover:text-indigo-300 font-medium">
-                  Sign in
+                  Gregg in
                 </button>
               </>
             )}

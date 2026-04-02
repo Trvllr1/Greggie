@@ -37,8 +37,21 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, HlsPlayerProps>(
       if (!video) return;
 
       const isHls = src.includes('.m3u8');
+      const isDirectVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(src);
+
+      if (isDirectVideo) {
+        // Direct video URL — play with native <video> and loop
+        video.src = src;
+        video.loop = true;
+        video.addEventListener('loadedmetadata', () => {
+          if (autoPlay) video.play().catch(() => {});
+          onStreamReady?.();
+        }, { once: true });
+        video.addEventListener('error', () => onStreamError?.(), { once: true });
+        return;
+      }
+
       if (!isHls) {
-        // Not an HLS URL — don't attach Hls.js, just set src for poster/fallback
         video.src = '';
         onStreamError?.();
         return;

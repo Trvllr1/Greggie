@@ -48,12 +48,12 @@ export function UserProfileModal({ onClose, onOpenCreatorStudio, onOpenAuth }: U
               <div className="mx-auto h-16 w-16 rounded-full bg-zinc-800 flex items-center justify-center">
                 <User size={32} className="text-zinc-500" />
               </div>
-              <p className="text-zinc-400">Sign in to access your profile, wallet, and purchase history.</p>
+              <p className="text-zinc-400">Gregg in to access your profile, wallet, and purchase history.</p>
               <button
                 onClick={() => { onClose(); onOpenAuth?.(); }}
                 className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-colors"
               >
-                Sign In / Register
+                Gregg In / Register
               </button>
             </div>
           ) : (
@@ -131,7 +131,7 @@ export function UserProfileModal({ onClose, onOpenCreatorStudio, onOpenAuth }: U
             >
               <div className="flex items-center gap-3 text-red-400">
                 <LogOut size={20} />
-                <span className="font-medium">Sign Out</span>
+                <span className="font-medium">Gregg Out</span>
               </div>
             </button>
           </div>

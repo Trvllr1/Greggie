@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { ChevronRight, Video, ShoppingBag } from 'lucide-react';
+import { ChevronRight, Video } from 'lucide-react';
 import { ButterflyIcon } from './ButterflyIcon';
 import { useState } from 'react';
 
@@ -14,6 +14,14 @@ export function Splash({ onEnter, onEnterCreator, onEnterMarketplace }: { onEnte
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
       style={{ backgroundColor: '#0A0A0F' }}
     >
+      {/* Background emblem */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <img
+          src="/ButterflyEmblem.png"
+          alt=""
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-full min-h-full object-cover opacity-[0.1]"
+        />
+      </div>
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -60,7 +68,7 @@ export function Splash({ onEnter, onEnterCreator, onEnterMarketplace }: { onEnte
               onClick={onEnterMarketplace}
               className="group flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 py-3 text-sm font-medium text-white/80 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
             >
-              <ShoppingBag size={16} />
+              <ButterflyIcon size={16} />
               Browse Shop
             </motion.button>
           )}

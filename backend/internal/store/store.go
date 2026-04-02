@@ -12,7 +12,7 @@ import (
 
 	"greggie/backend/internal/models"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -67,7 +67,7 @@ func (s *Store) CreateUser(u *models.User) error {
 		`INSERT INTO users (username, display_name, email, password_hash, role, preferred_categories)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, created_at, updated_at`,
-		u.Username, u.DisplayName, u.Email, u.PasswordHash, u.Role, "{"+strings.Join(u.PreferredCategories, ",")+"}",
+		u.Username, u.DisplayName, u.Email, u.PasswordHash, u.Role, pq.Array(u.PreferredCategories),
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
@@ -80,7 +80,7 @@ func (s *Store) GetUserByEmail(email string) (*models.User, error) {
 		        created_at, updated_at
 		 FROM users WHERE email = $1`, email,
 	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.AvatarURL,
-		&u.Role, &u.OnboardingComplete, pqStringArray(&u.PreferredCategories),
+		&u.Role, &u.OnboardingComplete, pq.Array(&u.PreferredCategories),
 		&u.StripeAccountID, &u.StripeOnboardingComplete,
 		&u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
@@ -98,7 +98,7 @@ func (s *Store) GetUserByID(id string) (*models.User, error) {
 		        created_at, updated_at
 		 FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.AvatarURL,
-		&u.Role, &u.OnboardingComplete, pqStringArray(&u.PreferredCategories),
+		&u.Role, &u.OnboardingComplete, pq.Array(&u.PreferredCategories),
 		&u.StripeAccountID, &u.StripeOnboardingComplete,
 		&u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
@@ -549,6 +549,332 @@ func (s *Store) GetProductByID(id string) (*models.Product, error) {
 		p.HighestBidderID = &bidderID.String
 	}
 	return p, nil
+}
+
+// GetProductFullByID returns a product with all rich data: variants, shipping, reviews, specs, bundles, relations.
+func (s *Store) GetProductFullByID(id string) (*models.Product, error) {
+	p, err := s.GetProductByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch extra columns from products table
+	var category, subcategory, warrantyInfo sql.NullString
+	var returnDays sql.NullInt64
+	var isDigital sql.NullBool
+	var reviewCount sql.NullInt64
+	var reviewAvg sql.NullFloat64
+	_ = s.PG.QueryRow(
+		`SELECT COALESCE(category,''), COALESCE(subcategory,''), return_days, warranty_info,
+		        COALESCE(is_digital, false), COALESCE(review_count, 0), COALESCE(review_avg, 0),
+		        COALESCE(bullet_points, '{}'), COALESCE(brand, ''), COALESCE(condition, 'new')
+		 FROM products WHERE id = $1`, id,
+	).Scan(&category, &subcategory, &returnDays, &warrantyInfo,
+		&isDigital, &reviewCount, &reviewAvg,
+		pq.Array(&p.BulletPoints), &p.Brand, &p.Condition)
+	if category.Valid {
+		p.Category = category.String
+	}
+	if subcategory.Valid {
+		p.Subcategory = subcategory.String
+	}
+	if returnDays.Valid {
+		p.ReturnDays = int(returnDays.Int64)
+	}
+	if warrantyInfo.Valid {
+		p.WarrantyInfo = warrantyInfo.String
+	}
+	if isDigital.Valid {
+		p.IsDigital = isDigital.Bool
+	}
+	p.ReviewCount = int(reviewCount.Int64)
+	p.ReviewAvg = reviewAvg.Float64
+
+	// Variant groups + options
+	p.VariantGroups, _ = s.getVariantGroups(id)
+
+	// Variants
+	p.Variants, _ = s.getVariants(id)
+
+	// Shipping
+	p.Shipping, _ = s.getShipping(id)
+
+	// Reviews (first page)
+	p.Reviews, _ = s.GetProductReviews(id, 5, 0)
+
+	// Specs
+	p.Specs, _ = s.getSpecs(id)
+
+	// Bundles
+	p.Bundles, _ = s.getBundles(id)
+
+	// Related products
+	p.RelatedProducts, _ = s.getRelatedProducts(id)
+
+	// Images
+	p.Images, _ = s.getProductImages(id)
+
+	return p, nil
+}
+
+func (s *Store) getVariantGroups(productID string) ([]models.ProductVariantGroup, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, product_id, name, position FROM product_variant_groups
+		 WHERE product_id = $1 ORDER BY position`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []models.ProductVariantGroup
+	for rows.Next() {
+		g := models.ProductVariantGroup{}
+		if err := rows.Scan(&g.ID, &g.ProductID, &g.Name, &g.Position); err != nil {
+			return nil, err
+		}
+		// Fetch options for this group
+		optRows, err := s.PG.Query(
+			`SELECT id, group_id, label, COALESCE(value,''), position
+			 FROM product_variant_options WHERE group_id = $1 ORDER BY position`, g.ID,
+		)
+		if err == nil {
+			defer optRows.Close()
+			for optRows.Next() {
+				o := models.ProductVariantOption{}
+				optRows.Scan(&o.ID, &o.GroupID, &o.Label, &o.Value, &o.Position)
+				g.Options = append(g.Options, o)
+			}
+		}
+		groups = append(groups, g)
+	}
+	return groups, nil
+}
+
+func (s *Store) getVariants(productID string) ([]models.ProductVariant, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, product_id, COALESCE(sku,''), price_cents, inventory,
+		        COALESCE(image_url,''), is_default
+		 FROM product_variants WHERE product_id = $1`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var variants []models.ProductVariant
+	for rows.Next() {
+		v := models.ProductVariant{}
+		var priceCents sql.NullInt64
+		var imageURL sql.NullString
+		if err := rows.Scan(&v.ID, &v.ProductID, &v.SKU, &priceCents, &v.Inventory, &imageURL, &v.IsDefault); err != nil {
+			return nil, err
+		}
+		if priceCents.Valid {
+			pc := priceCents.Int64
+			v.PriceCents = &pc
+		}
+		if imageURL.Valid && imageURL.String != "" {
+			v.ImageURL = imageURL.String
+		}
+		// Get option IDs for this variant
+		optRows, err := s.PG.Query(
+			`SELECT option_id FROM product_variant_option_map WHERE variant_id = $1`, v.ID,
+		)
+		if err == nil {
+			defer optRows.Close()
+			for optRows.Next() {
+				var oid string
+				optRows.Scan(&oid)
+				v.OptionIDs = append(v.OptionIDs, oid)
+			}
+		}
+		variants = append(variants, v)
+	}
+	return variants, nil
+}
+
+func (s *Store) getShipping(productID string) (*models.ProductShipping, error) {
+	sh := &models.ProductShipping{}
+	var flatRate sql.NullInt64
+	var state sql.NullString
+	err := s.PG.QueryRow(
+		`SELECT id, product_id, COALESCE(free_shipping, false), COALESCE(shipping_class, 'standard'),
+		        flat_rate_cents, COALESCE(ships_from_country, 'US'), ships_from_state,
+		        COALESCE(handling_days, 1), COALESCE(estimated_days_min, 3), COALESCE(estimated_days_max, 7)
+		 FROM product_shipping WHERE product_id = $1`, productID,
+	).Scan(&sh.ID, &sh.ProductID, &sh.FreeShipping, &sh.ShippingClass, &flatRate, &sh.ShipsFromCountry, &state,
+		&sh.HandlingDays, &sh.EstDaysMin, &sh.EstDaysMax)
+	if err != nil {
+		return nil, err
+	}
+	if flatRate.Valid {
+		fc := flatRate.Int64
+		sh.FlatRateCents = &fc
+	}
+	if state.Valid {
+		sh.ShipsFromState = state.String
+	}
+	return sh, nil
+}
+
+func (s *Store) GetProductReviews(productID string, limit, offset int) ([]models.ProductReview, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, product_id, COALESCE(user_id::text,''), COALESCE(user_name,''), rating,
+		        COALESCE(title,''), COALESCE(body,''), COALESCE(verified_purchase, false),
+		        COALESCE(helpful_count, 0), COALESCE(images, '{}'), created_at
+		 FROM product_reviews WHERE product_id = $1
+		 ORDER BY helpful_count DESC, created_at DESC
+		 LIMIT $2 OFFSET $3`, productID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reviews []models.ProductReview
+	for rows.Next() {
+		r := models.ProductReview{}
+		var userID string
+		if err := rows.Scan(&r.ID, &r.ProductID, &userID, &r.UserName, &r.Rating,
+			&r.Title, &r.Body, &r.VerifiedPurchase, &r.HelpfulCount,
+			pq.Array(&r.Images), &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		if userID != "" {
+			r.UserID = &userID
+		}
+		reviews = append(reviews, r)
+	}
+	return reviews, nil
+}
+
+func (s *Store) CreateProductReview(r *models.ProductReview) error {
+	err := s.PG.QueryRow(
+		`INSERT INTO product_reviews (product_id, user_id, user_name, rating, title, body, verified_purchase, images)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 RETURNING id, created_at`,
+		r.ProductID, r.UserID, r.UserName, r.Rating, r.Title, r.Body, r.VerifiedPurchase,
+		pq.Array(r.Images),
+	).Scan(&r.ID, &r.CreatedAt)
+	if err != nil {
+		return err
+	}
+	// Update aggregate counts on the product
+	_, _ = s.PG.Exec(
+		`UPDATE products SET
+		   review_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = $1),
+		   review_avg = (SELECT COALESCE(AVG(rating), 0) FROM product_reviews WHERE product_id = $1)
+		 WHERE id = $1`, r.ProductID,
+	)
+	return nil
+}
+
+func (s *Store) MarkReviewHelpful(reviewID string) (int, error) {
+	var count int
+	err := s.PG.QueryRow(
+		`UPDATE product_reviews SET helpful_count = helpful_count + 1 WHERE id = $1 RETURNING helpful_count`,
+		reviewID,
+	).Scan(&count)
+	return count, err
+}
+
+func (s *Store) getSpecs(productID string) ([]models.ProductSpec, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, product_id, key, value, position FROM product_specs WHERE product_id = $1 ORDER BY position`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var specs []models.ProductSpec
+	for rows.Next() {
+		sp := models.ProductSpec{}
+		rows.Scan(&sp.ID, &sp.ProductID, &sp.Key, &sp.Value, &sp.Position)
+		specs = append(specs, sp)
+	}
+	return specs, nil
+}
+
+func (s *Store) getBundles(productID string) ([]models.ProductBundle, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, name, COALESCE(description,''), COALESCE(discount_pct,0), COALESCE(discount_cents,0)
+		 FROM product_bundles WHERE id IN (
+		   SELECT bundle_id FROM product_bundle_items WHERE product_id = $1
+		 )`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bundles []models.ProductBundle
+	for rows.Next() {
+		b := models.ProductBundle{}
+		rows.Scan(&b.ID, &b.Name, &b.Description, &b.DiscountPct, &b.DiscountCents)
+		// Fetch items
+		itemRows, err := s.PG.Query(
+			`SELECT bi.product_id, bi.quantity FROM product_bundle_items bi WHERE bi.bundle_id = $1`, b.ID,
+		)
+		if err == nil {
+			defer itemRows.Close()
+			for itemRows.Next() {
+				item := models.ProductBundleItem{}
+				var prodID string
+				itemRows.Scan(&prodID, &item.Quantity)
+				// Avoid deep recursion — get basic product info only
+				prod, err := s.GetProductByID(prodID)
+				if err == nil {
+					item.Product = prod
+				}
+				b.Items = append(b.Items, item)
+			}
+		}
+		bundles = append(bundles, b)
+	}
+	return bundles, nil
+}
+
+func (s *Store) getRelatedProducts(productID string) ([]models.Product, error) {
+	rows, err := s.PG.Query(
+		`SELECT related_id FROM product_relations
+		 WHERE product_id = $1 ORDER BY position LIMIT 12`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var relID string
+		rows.Scan(&relID)
+		p, err := s.GetProductByID(relID)
+		if err == nil {
+			products = append(products, *p)
+		}
+	}
+	return products, nil
+}
+
+func (s *Store) getProductImages(productID string) ([]models.ProductImage, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, product_id, url, position FROM product_images
+		 WHERE product_id = $1 ORDER BY position`, productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var images []models.ProductImage
+	for rows.Next() {
+		img := models.ProductImage{}
+		rows.Scan(&img.ID, &img.ProductID, &img.URL, &img.Position)
+		images = append(images, img)
+	}
+	return images, nil
 }
 
 // CheckoutAtomic performs inventory decrement + order creation in a single
@@ -1240,7 +1566,7 @@ func (s *Store) CreateShopProduct(shopID string, p *models.Product) error {
 		 RETURNING id, created_at`,
 		shopID, p.Name, p.Description, p.ImageURL, p.PriceCents,
 		nilIfZeroInt64(p.OriginalPrice), p.Inventory, p.SaleType,
-		p.Condition, p.Brand, pqArray(p.Tags),
+		p.Condition, p.Brand, pq.Array(p.Tags),
 	).Scan(&p.ID, &p.CreatedAt)
 }
 
@@ -1822,33 +2148,6 @@ func nilIfEmpty(s string) interface{} {
 	return s
 }
 
-type pqStringArrayScanner struct {
-	dest *[]string
-}
-
-func pqStringArray(dest *[]string) *pqStringArrayScanner {
-	return &pqStringArrayScanner{dest: dest}
-}
-
-func (s *pqStringArrayScanner) Scan(src interface{}) error {
-	if src == nil {
-		*s.dest = []string{}
-		return nil
-	}
-	raw, ok := src.([]byte)
-	if !ok {
-		return fmt.Errorf("unexpected type for text[]: %T", src)
-	}
-	str := string(raw)
-	str = strings.Trim(str, "{}")
-	if str == "" {
-		*s.dest = []string{}
-		return nil
-	}
-	*s.dest = strings.Split(str, ",")
-	return nil
-}
-
 func envInt(key string, defaultVal int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -1866,11 +2165,4 @@ func nilIfZeroInt64(v *int64) interface{} {
 		return nil
 	}
 	return *v
-}
-
-func pqArray(arr []string) string {
-	if len(arr) == 0 {
-		return "{}"
-	}
-	return "{" + strings.Join(arr, ",") + "}"
 }

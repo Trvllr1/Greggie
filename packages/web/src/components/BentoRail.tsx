@@ -153,7 +153,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                     style={{ width: isPrimary ? 130 : 110, height: isPrimary ? 74 : 62 }}
                   >
                     <img
-                      src={thumbUrl(channel.streamUrl)}
+                      src={thumbUrl(channel.thumbnailUrl || channel.streamUrl)}
                       alt=""
                       loading="lazy"
                       className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"

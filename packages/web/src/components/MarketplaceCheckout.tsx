@@ -345,7 +345,7 @@ export function MarketplaceCheckout({
                   <p className="text-xs text-white/50">
                     Already have an account?{' '}
                     <button onClick={onSignIn} className="text-indigo-400 hover:text-indigo-300 font-medium">
-                      Sign in
+                      Gregg in
                     </button>
                     {' '}for faster checkout.
                   </p>

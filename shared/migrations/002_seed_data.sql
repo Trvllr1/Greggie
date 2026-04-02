@@ -41,62 +41,62 @@ INSERT INTO channels (id, creator_id, title, description, category, status, view
     -- c1: Primary — Samsung Galaxy Unpacked (EXCLUSIVE)
     ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'Samsung Galaxy Unpacked', 'Major sponsored launch event — exclusive drops and reveals', 'Tech', 'LIVE', 128000, 'buy_now', 'EXCLUSIVE', true,
      'https://images.unsplash.com/photo-1605236453806-6ff36851218e?auto=format&fit=crop&q=80&w=1200&h=600',
-     'https://images.unsplash.com/photo-1605236453806-6ff36851218e?auto=format&fit=crop&q=80&w=1200&h=600'),
+     'https://assets.mixkit.co/videos/4915/4915-1080.mp4'),
 
     -- c2: NYC Boutique Drop (FLASH)
     ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'NYC Boutique Drop', 'Live fashion hauls and styling tips', 'Fashion', 'LIVE', 3200, 'buy_now', 'FLASH', false,
      'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/805/805-1080.mp4'),
 
     -- c3: Vintage Card Breaks (REPLAY)
     ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'Vintage Card Breaks', 'Rare collectibles up for bid', 'Collectibles', 'RELAY', 850, 'auction', 'REPLAY', false,
      'https://images.unsplash.com/photo-1626197031507-c17099753214?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1626197031507-c17099753214?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/active_storage/video_items/100388/1723577663/100388-video-1080.mp4'),
 
     -- c4: GlowUp Summer Collection (TRENDING)
     ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000005', 'GlowUp Summer Collection', 'Try before you buy — live swatches and drops', 'Beauty', 'LIVE', 28500, 'drop', 'TRENDING', false,
      'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/52046/52046-1080.mp4'),
 
     -- c5: Chef Mario Cooks Live
     ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000006', 'Chef Mario Cooks Live', 'Artisanal food drops from local makers', 'Food', 'LIVE', 5400, 'drop', '', false,
      'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/49231/49231-720.mp4'),
 
     -- c6: Live Canvas: Abstract Series (ART)
     ('10000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000007', 'Live Canvas: Abstract Series', 'Original paintings created live on stream', 'Art', 'LIVE', 1200, 'auction', 'ART', false,
      'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/40310/40310-1080.mp4'),
 
     -- c7: SneakerHeadz: Rare Jordan Drop (HYPE)
     ('10000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000008', 'SneakerHeadz: Rare Jordan Drop', 'Deadstock heat — first come first served', 'Fashion', 'LIVE', 45000, 'drop', 'HYPE', false,
      'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/15059/15059-720.mp4'),
 
     -- c8: Luxe Watches Vault (LUXURY)
     ('10000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000009', 'Luxe Watches Vault', 'Authenticated luxury timepieces live', 'Luxury', 'LIVE', 8900, 'auction', 'LUXURY', false,
      'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/28896/28896-1080.mp4'),
 
     -- c9: Iron & Yoga Essentials (RELAY)
     ('10000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000010', 'Iron & Yoga Essentials', 'Fitness gear reviews and live demos', 'Fitness', 'RELAY', 450, 'buy_now', '', false,
      'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/1053/1053-1080.mp4'),
 
     -- c10: Classic Car Auctions (PREMIUM)
     ('10000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000011', 'Classic Car Auctions', 'Fully restored classics, live bidding', 'Automotive', 'LIVE', 12400, 'auction', 'PREMIUM', false,
      'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/74/74-1080.mp4'),
 
     -- c11: TechReview: Unboxing the Future
     ('10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000002', 'TechReview: Unboxing the Future', 'Daily drops on the hottest tech gadgets', 'Tech', 'LIVE', 18500, 'drop', '', false,
      'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/46635/46635-720.mp4'),
 
     -- c12: K-Pop Merch Exclusive (GLOBAL)
     ('10000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000012', 'K-Pop Merch Exclusive', 'Signed albums and limited lightstick bundles', 'Collectibles', 'LIVE', 52000, 'buy_now', 'GLOBAL', false,
      'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/48507/48507-720.mp4'),
 
     -- c13: Minimalist Home Decor (SCHEDULED)
     ('10000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000013', 'Minimalist Home Decor', 'Hand-poured candles, ceramics, and more', 'Home', 'SCHEDULED', 0, 'buy_now', '', false,
@@ -106,37 +106,37 @@ INSERT INTO channels (id, creator_id, title, description, category, status, view
     -- c14: Spoiled Pups Boutique
     ('10000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000014', 'Spoiled Pups Boutique', 'Designer pet accessories live', 'Pets', 'LIVE', 6700, 'buy_now', '', false,
      'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/45868/45868-720.mp4'),
 
     -- c15: Adventure Awaits: Travel Gear (RELAY)
     ('10000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000015', 'Adventure Awaits: Travel Gear', 'Ultralight backpacks and adventure essentials', 'Travel', 'RELAY', 1100, 'buy_now', '', false,
      'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/41576/41576-1080.mp4'),
 
     -- c16: Custom Kicks Live (CREATIVE)
     ('10000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000016', 'Custom Kicks Live', 'Hand-painted sneakers made on stream', 'Art', 'LIVE', 8500, 'auction', 'CREATIVE', false,
      'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/43444/43444-1080.mp4'),
 
     -- c17: Rare Books & Manuscripts
     ('10000000-0000-0000-0000-000000000017', '00000000-0000-0000-0000-000000000017', 'Rare Books & Manuscripts', 'First editions and antiquarian treasures', 'Collectibles', 'LIVE', 3200, 'auction', '', false,
      'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/50726/50726-1080.mp4'),
 
     -- c18: Urban Jungle: Rare Plants (DROP)
     ('10000000-0000-0000-0000-000000000018', '00000000-0000-0000-0000-000000000018', 'Urban Jungle: Rare Plants', 'Highly sought variegated cuttings — limited stock', 'Home', 'LIVE', 14500, 'drop', 'DROP', false,
      'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/33422/33422-720.mp4'),
 
     -- c19: Indie Game Showcase
     ('10000000-0000-0000-0000-000000000019', '00000000-0000-0000-0000-000000000019', 'Indie Game Showcase', 'Collector editions and digital soundtracks', 'Tech', 'LIVE', 22000, 'buy_now', '', false,
      'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=800&h=600'),
+     'https://assets.mixkit.co/videos/43527/43527-1080.mp4'),
 
     -- c20: Vintage Vinyl Digging (RELAY)
     ('10000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000020', 'Vintage Vinyl Digging', 'Original pressings in VG+ condition', 'Collectibles', 'RELAY', 2800, 'buy_now', '', false,
      'https://images.unsplash.com/photo-1539375665275-f9de415ef9ac?auto=format&fit=crop&q=80&w=800&h=600',
-     'https://images.unsplash.com/photo-1539375665275-f9de415ef9ac?auto=format&fit=crop&q=80&w=800&h=600')
+     'https://assets.mixkit.co/videos/47499/47499-720.mp4')
 ON CONFLICT (id) DO UPDATE SET
     title = EXCLUDED.title,
     description = EXCLUDED.description,
@@ -176,15 +176,15 @@ INSERT INTO products (id, channel_id, name, description, price_cents, original_p
     -- c11: TechReview
     ('20000000-0000-0000-0000-000000000013', '10000000-0000-0000-0000-000000000011', 'Quantum VR Headset', 'Next-gen virtual reality experience.', 49900, NULL, 300, 'drop', true, 'https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?auto=format&fit=crop&q=80&w=400'),
     -- c12: K-Pop Merch
-    ('20000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000012', 'Signed Album + Lightstick Bundle', 'Limited edition signed by all members.', 12000, NULL, 50, 'buy_now', true, 'https://images.unsplash.com/photo-1619983081563-430f63602796?auto=format&fit=crop&q=80&w=400'),
+    ('20000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000012', 'Signed Album + Lightstick Bundle', 'Limited edition signed by all members.', 12000, NULL, 50, 'buy_now', true, 'https://images.unsplash.com/photo-1611702700098-dec597b27d9d?auto=format&fit=crop&q=80&w=400'),
     -- c13: Minimalist Home Decor
     ('20000000-0000-0000-0000-000000000015', '10000000-0000-0000-0000-000000000013', 'Hand-poured Soy Candle', 'Sandalwood and vanilla scent.', 3500, NULL, 100, 'buy_now', true, 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&q=80&w=400'),
     -- c14: Spoiled Pups
-    ('20000000-0000-0000-0000-000000000016', '10000000-0000-0000-0000-000000000014', 'Designer Dog Collar', 'Genuine leather with brass hardware.', 8500, NULL, 25, 'buy_now', true, 'https://images.unsplash.com/photo-1602584386319-fa8eb4361c2c?auto=format&fit=crop&q=80&w=400'),
+    ('20000000-0000-0000-0000-000000000016', '10000000-0000-0000-0000-000000000014', 'Designer Dog Collar', 'Genuine leather with brass hardware.', 8500, NULL, 25, 'buy_now', true, 'https://images.unsplash.com/photo-1567612529009-afe25413fbe5?auto=format&fit=crop&q=80&w=400'),
     -- c15: Adventure Awaits
     ('20000000-0000-0000-0000-000000000017', '10000000-0000-0000-0000-000000000015', 'Ultralight Backpack', 'Waterproof, 40L capacity.', 15000, NULL, 80, 'buy_now', true, 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&q=80&w=400'),
     -- c16: Custom Kicks Live
-    ('20000000-0000-0000-0000-000000000018', '10000000-0000-0000-0000-000000000016', 'Custom Painted AF1s', 'Hand-painted galaxy design.', 25000, NULL, 2, 'auction', true, 'https://images.unsplash.com/photo-1514989940723-e8e51635b782?auto=format&fit=crop&q=80&w=400'),
+    ('20000000-0000-0000-0000-000000000018', '10000000-0000-0000-0000-000000000016', 'Custom Painted AF1s', 'Hand-painted galaxy design.', 25000, NULL, 2, 'auction', true, 'https://images.unsplash.com/photo-1595341888016-a392ef81b7de?auto=format&fit=crop&q=80&w=400'),
     -- c17: Rare Books
     ('20000000-0000-0000-0000-000000000019', '10000000-0000-0000-0000-000000000017', '1st Edition Great Gatsby', 'Original dust jacket, excellent condition.', 450000, NULL, 1, 'auction', true, 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400'),
     -- c18: Urban Jungle
@@ -192,7 +192,7 @@ INSERT INTO products (id, channel_id, name, description, price_cents, original_p
     -- c19: Indie Game Showcase
     ('20000000-0000-0000-0000-000000000021', '10000000-0000-0000-0000-000000000019', 'Cyberpunk 2077 Collector Edition', 'Includes statue, artbook, and digital soundtrack.', 19999, NULL, 50, 'buy_now', true, 'https://images.unsplash.com/photo-1493711662062-fa541adb3fc8?auto=format&fit=crop&q=80&w=400'),
     -- c20: Vintage Vinyl
-    ('20000000-0000-0000-0000-000000000022', '10000000-0000-0000-0000-000000000020', 'Pink Floyd - Dark Side of the Moon', 'Original 1973 pressing, VG+ condition.', 4500, NULL, 3, 'buy_now', true, 'https://images.unsplash.com/photo-1535905557558-afc4877a26fc?auto=format&fit=crop&q=80&w=400')
+    ('20000000-0000-0000-0000-000000000022', '10000000-0000-0000-0000-000000000020', 'Pink Floyd - Dark Side of the Moon', 'Original 1973 pressing, VG+ condition.', 4500, NULL, 3, 'buy_now', true, 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&q=80&w=400')
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,

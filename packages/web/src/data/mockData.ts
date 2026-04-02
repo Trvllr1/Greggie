@@ -1,3 +1,73 @@
+export type ProductVariantOption = {
+  id: string;
+  groupId: string;
+  label: string;
+  value: string;  // hex color, image url, or empty
+  position: number;
+};
+
+export type ProductVariantGroup = {
+  id: string;
+  productId: string;
+  name: string;    // "Color", "Size", "Storage"
+  position: number;
+  options: ProductVariantOption[];
+};
+
+export type ProductVariant = {
+  id: string;
+  productId: string;
+  sku?: string;
+  priceCents?: number;
+  price?: number;
+  inventory: number;
+  imageUrl?: string;
+  isDefault: boolean;
+  optionIds: string[];
+};
+
+export type ProductShipping = {
+  freeShipping: boolean;
+  shippingClass: 'standard' | 'express' | 'overnight' | 'freight' | 'digital';
+  flatRateCents?: number;
+  shipsFromCountry: string;
+  shipsFromState?: string;
+  handlingDays: number;
+  estimatedDaysMin: number;
+  estimatedDaysMax: number;
+};
+
+export type ProductReview = {
+  id: string;
+  userName?: string;
+  rating: number;
+  title: string;
+  body: string;
+  verifiedPurchase: boolean;
+  helpfulCount: number;
+  images?: string[];
+  createdAt: string;
+};
+
+export type ProductSpec = {
+  key: string;
+  value: string;
+};
+
+export type ProductBundleItem = {
+  product?: Product;
+  quantity: number;
+};
+
+export type ProductBundle = {
+  id: string;
+  name: string;
+  description: string;
+  discountPct: number;
+  discountCents: number;
+  items: ProductBundleItem[];
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -11,13 +81,34 @@ export type Product = {
   highestBidder?: string;
   auctionStatus?: string;
   bidCount?: number;
+  // Rich product fields
+  brand?: string;
+  condition?: 'new' | 'like_new' | 'good' | 'fair';
+  category?: string;
+  subcategory?: string;
+  tags?: string[];
+  images?: string[];
+  bulletPoints?: string[];
+  returnDays?: number;
+  warrantyInfo?: string;
+  isDigital?: boolean;
+  reviewCount?: number;
+  reviewAvg?: number;
+  variantGroups?: ProductVariantGroup[];
+  variants?: ProductVariant[];
+  specs?: ProductSpec[];
+  shipping?: ProductShipping;
+  reviews?: ProductReview[];
+  relatedProducts?: Product[];
+  bundles?: ProductBundle[];
 };
 
 export type Channel = {
   id: string;
   title: string;
   type: 'LIVE' | 'RELAY' | 'SCHEDULED';
-  streamUrl: string; // Using picsum or similar for mock video/image
+  streamUrl: string;
+  thumbnailUrl?: string;
   viewers: number;
   badge?: string;
   category: string;
@@ -28,6 +119,29 @@ export type Channel = {
     avatar: string;
   };
   scheduledStartTime?: string;
+};
+
+// Thematic stock video streams (Mixkit, free, no auth)
+const MOCK_STREAMS: Record<string, string> = {
+  tech:         'https://assets.mixkit.co/videos/4915/4915-1080.mp4',          // phone/gadget
+  fashion:      'https://assets.mixkit.co/videos/805/805-1080.mp4',            // fashion model
+  collectibles: 'https://assets.mixkit.co/active_storage/video_items/100388/1723577663/100388-video-1080.mp4', // card manipulation
+  beauty:       'https://assets.mixkit.co/videos/52046/52046-1080.mp4',        // makeup
+  food:         'https://assets.mixkit.co/videos/49231/49231-720.mp4',         // cooking
+  art:          'https://assets.mixkit.co/videos/40310/40310-1080.mp4',        // painting
+  sneakers:     'https://assets.mixkit.co/videos/15059/15059-720.mp4',         // sneakers
+  luxury:       'https://assets.mixkit.co/videos/28896/28896-1080.mp4',        // watch closeup
+  fitness:      'https://assets.mixkit.co/videos/1053/1053-1080.mp4',          // yoga
+  automotive:   'https://assets.mixkit.co/videos/74/74-1080.mp4',              // sports car
+  tech2:        'https://assets.mixkit.co/videos/46635/46635-720.mp4',         // coding/tech
+  kpop:         'https://assets.mixkit.co/videos/48507/48507-720.mp4',         // concert crowd
+  pets:         'https://assets.mixkit.co/videos/45868/45868-720.mp4',         // corgi
+  travel:       'https://assets.mixkit.co/videos/41576/41576-1080.mp4',        // mountain highway
+  artkicks:     'https://assets.mixkit.co/videos/43444/43444-1080.mp4',        // art creation
+  books:        'https://assets.mixkit.co/videos/50726/50726-1080.mp4',        // library shelf
+  plants:       'https://assets.mixkit.co/videos/33422/33422-720.mp4',         // watering plant
+  gaming:       'https://assets.mixkit.co/videos/43527/43527-1080.mp4',        // gaming
+  vinyl:        'https://assets.mixkit.co/videos/47499/47499-720.mp4',         // record player
 };
 
 export const CATEGORIES = [
@@ -51,7 +165,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c1',
     title: 'Samsung Galaxy Unpacked',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1605236453806-6ff36851218e?auto=format&fit=crop&q=80&w=1200&h=600',
+    streamUrl: MOCK_STREAMS.tech,
     viewers: 14200,
     badge: 'EXCLUSIVE',
     category: 'Tech',
@@ -86,7 +200,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c2',
     title: 'NYC Boutique Drop',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.fashion,
     viewers: 3200,
     badge: 'FLASH',
     category: 'Fashion',
@@ -110,7 +224,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c3',
     title: 'Vintage Card Breaks',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1626197031507-c17099753214?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.collectibles,
     viewers: 850,
     badge: 'REPLAY',
     category: 'Collectibles',
@@ -136,7 +250,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c4',
     title: 'GlowUp Summer Collection',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.beauty,
     viewers: 28500,
     badge: 'TRENDING',
     category: 'Beauty',
@@ -170,7 +284,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c5',
     title: 'Chef Mario Cooks Live',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.food,
     viewers: 5400,
     category: 'Food',
     merchant: {
@@ -193,7 +307,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c6',
     title: 'Live Canvas: Abstract Series',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.art,
     viewers: 1200,
     badge: 'ART',
     category: 'Art',
@@ -219,7 +333,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c7',
     title: 'SneakerHeadz: Rare Jordan Drop',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.sneakers,
     viewers: 45000,
     badge: 'HYPE',
     category: 'Fashion',
@@ -244,7 +358,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c8',
     title: 'Luxe Watches Vault',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.luxury,
     viewers: 8900,
     badge: 'LUXURY',
     category: 'Luxury',
@@ -270,7 +384,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c9',
     title: 'Iron & Yoga Essentials',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.fitness,
     viewers: 450,
     category: 'Fitness',
     merchant: {
@@ -293,7 +407,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c10',
     title: 'Classic Car Auctions',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.automotive,
     viewers: 12400,
     badge: 'PREMIUM',
     category: 'Automotive',
@@ -319,7 +433,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c11',
     title: 'TechReview: Unboxing the Future',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.tech2,
     viewers: 18500,
     category: 'Tech',
     merchant: {
@@ -343,7 +457,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c12',
     title: 'K-Pop Merch Exclusive',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.kpop,
     viewers: 52000,
     badge: 'GLOBAL',
     category: 'Collectibles',
@@ -357,7 +471,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Signed Album + Lightstick Bundle',
         price: 120.00,
         inventory: 50,
-        mediaUrl: 'https://images.unsplash.com/photo-1619983081563-430f63602796?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1611702700098-dec597b27d9d?auto=format&fit=crop&q=80&w=400',
         description: 'Limited edition signed by all members.',
         saleType: 'buy_now',
       }
@@ -391,7 +505,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c14',
     title: 'Spoiled Pups Boutique',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.pets,
     viewers: 6700,
     category: 'Pets',
     merchant: {
@@ -404,7 +518,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Designer Dog Collar',
         price: 85.00,
         inventory: 25,
-        mediaUrl: 'https://images.unsplash.com/photo-1602584386319-fa8eb4361c2c?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1567612529009-afe25413fbe5?auto=format&fit=crop&q=80&w=400',
         description: 'Genuine leather with brass hardware.',
         saleType: 'buy_now',
       }
@@ -414,7 +528,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c15',
     title: 'Adventure Awaits: Travel Gear',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.travel,
     viewers: 1100,
     category: 'Travel',
     merchant: {
@@ -437,7 +551,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c16',
     title: 'Custom Kicks Live',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.artkicks,
     viewers: 8500,
     badge: 'CREATIVE',
     category: 'Art',
@@ -451,7 +565,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Custom Painted AF1s',
         price: 250.00,
         inventory: 2,
-        mediaUrl: 'https://images.unsplash.com/photo-1514989940723-e8e51635b782?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1595341888016-a392ef81b7de?auto=format&fit=crop&q=80&w=400',
         description: 'Hand-painted galaxy design.',
         saleType: 'auction',
         currentBid: 280.00,
@@ -463,7 +577,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c17',
     title: 'Rare Books & Manuscripts',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.books,
     viewers: 3200,
     category: 'Collectibles',
     merchant: {
@@ -488,7 +602,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c18',
     title: 'Urban Jungle: Rare Plants',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.plants,
     viewers: 14500,
     badge: 'DROP',
     category: 'Home',
@@ -513,7 +627,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c19',
     title: 'Indie Game Showcase',
     type: 'LIVE',
-    streamUrl: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.gaming,
     viewers: 22000,
     category: 'Tech',
     merchant: {
@@ -536,7 +650,7 @@ export const MOCK_CHANNELS: Channel[] = [
     id: 'c20',
     title: 'Vintage Vinyl Digging',
     type: 'RELAY',
-    streamUrl: 'https://images.unsplash.com/photo-1539375665275-f9de415ef9ac?auto=format&fit=crop&q=80&w=800&h=600',
+    streamUrl: MOCK_STREAMS.vinyl,
     viewers: 2800,
     category: 'Collectibles',
     merchant: {
@@ -549,7 +663,7 @@ export const MOCK_CHANNELS: Channel[] = [
         name: 'Pink Floyd - Dark Side of the Moon',
         price: 45.00,
         inventory: 3,
-        mediaUrl: 'https://images.unsplash.com/photo-1535905557558-afc4877a26fc?auto=format&fit=crop&q=80&w=400',
+        mediaUrl: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&q=80&w=400',
         description: 'Original 1973 pressing, VG+ condition.',
         saleType: 'buy_now',
       }

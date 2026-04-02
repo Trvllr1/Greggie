@@ -3,7 +3,7 @@ import type { Channel, Product } from '../data/mockData';
 import {
   Users, DollarSign, Heart, Package, X, Mic, Video, MessageCircle,
   Gavel, Timer, HelpCircle, Plus, Settings, BarChart3, Zap, Trash2,
-  Edit3, Pin, PinOff, ShoppingBag, TrendingUp, Eye, ArrowLeft,
+  Edit3, Pin, PinOff, TrendingUp, Eye, ArrowLeft,
   Clock, Tag, Image, ChevronDown, Send, Flame, Gift, Radio, Copy, Check,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -848,7 +848,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                   </div>
                   <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="p-1.5 rounded-lg bg-yellow-500/20"><ShoppingBag size={14} className="text-yellow-400" /></div>
+                      <div className="p-1.5 rounded-lg bg-yellow-500/20"><ButterflyIcon size={14} /></div>
                       <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Orders</span>
                     </div>
                     <p className="text-2xl font-bold">{totalOrders.toLocaleString()}</p>

@@ -157,6 +157,8 @@ func main() {
 	api.Get("/channels/:id", channels.GetByID)
 
 	// Products (public)
+	api.Get("/products/:id/full", products.GetFullByID)
+	api.Get("/products/:id/reviews", products.GetReviews)
 	api.Get("/products/:id", products.GetByID)
 	api.Get("/channels/:channelId/products", products.GetByChannel)
 
@@ -226,6 +228,10 @@ func main() {
 
 	// Events
 	protected.Post("/events", events.TrackEvent)
+
+	// Product reviews (auth required)
+	protected.Post("/products/:id/reviews", products.SubmitReview)
+	protected.Post("/reviews/:reviewId/helpful", products.MarkReviewHelpful)
 
 	// Stripe Connect onboarding
 	protected.Post("/connect/onboard", connect.StartOnboarding)
