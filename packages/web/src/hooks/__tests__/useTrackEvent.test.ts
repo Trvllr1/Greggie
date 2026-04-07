@@ -33,6 +33,7 @@ describe('useTrackEvent', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     const [url, opts] = spy.mock.calls[0];
     expect(url).toContain('/api/v1/events');
+    expect(opts).toBeDefined();
     expect(opts.method).toBe('POST');
 
     const body = JSON.parse(opts.body as string);
@@ -47,7 +48,9 @@ describe('useTrackEvent', () => {
     const { result } = renderHook(() => useTrackEvent());
     result.current('view_start');
 
-    const body = JSON.parse((spy.mock.calls[0][1].body) as string);
+    const [, opts] = spy.mock.calls[0];
+    expect(opts).toBeDefined();
+    const body = JSON.parse(opts.body as string);
     expect(body.channel_id).toBe('');
   });
 });

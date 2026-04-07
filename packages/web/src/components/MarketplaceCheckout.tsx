@@ -91,11 +91,19 @@ export function MarketplaceCheckout({
   useEffect(() => {
     if (step === 'review' || step === 'method' || step === 'payment') {
       const estItems = items.map(i => ({ product_id: i.product.id, quantity: i.quantity }));
-      api.estimateTax(estItems, shippingMethod, coupon?.valid ? coupon.code : undefined)
+      api.estimateTax(estItems, shippingMethod, {
+        full_name: address.full_name,
+        address_line1: address.address_line1,
+        address_line2: address.address_line2,
+        city: address.city,
+        state: address.state,
+        zip_code: address.zip_code,
+        phone: address.phone,
+      }, coupon?.valid ? coupon.code : undefined)
         .then(setEstimate)
         .catch(() => {});
     }
-  }, [step, shippingMethod, items, coupon]);
+  }, [step, shippingMethod, items, coupon, address]);
 
   const stepIndex = CHECKOUT_STEPS.findIndex(s => s.key === step);
 
@@ -262,8 +270,9 @@ export function MarketplaceCheckout({
   const subtotalCents = estimate?.subtotal_cents ?? Math.round(total * 100);
   const shippingCents = estimate?.shipping_cents ?? shippingInfo.cents;
   const discountCents = estimate?.discount_cents ?? (coupon?.valid ? coupon.discount_cents : 0);
-  const taxCents = estimate?.tax_cents ?? Math.round(Math.max(0, subtotalCents - discountCents) * 0.0825);
+  const taxCents = estimate?.tax_cents ?? 0;
   const totalCents = estimate?.total_cents ?? (subtotalCents - discountCents + shippingCents + taxCents);
+  const taxLabel = estimate?.tax_source === 'stripe_tax' ? 'Tax (Stripe Tax)' : 'Estimated tax';
   const cardBrand = getCardBrand(payment.card_number);
   const maskedCard = payment.card_number.replace(/\s/g, '').slice(-4);
 
@@ -780,7 +789,7 @@ export function MarketplaceCheckout({
                   <span className="text-white">${(shippingCents / 100).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/50">Tax (8.25%)</span>
+                  <span className="text-white/50">{taxLabel}</span>
                   <span className="text-white">${(taxCents / 100).toFixed(2)}</span>
                 </div>
                 <div className="h-px bg-white/10" />

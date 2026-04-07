@@ -1,9 +1,9 @@
 import { motion } from 'motion/react';
-import { ChevronRight, Video } from 'lucide-react';
+import { ChevronRight, Store, Video, Shield } from 'lucide-react';
 import { ButterflyIcon } from './ButterflyIcon';
 import { useState } from 'react';
 
-export function Splash({ onEnter, onEnterCreator, onEnterMarketplace }: { onEnter: () => void, onEnterCreator?: () => void, onEnterMarketplace?: () => void }) {
+export function Splash({ onEnter, onEnterCreator, onEnterMarketplace, onEnterMarketStudio, onEnterAdmin }: { onEnter: () => void, onEnterCreator?: () => void, onEnterMarketplace?: () => void, onEnterMarketStudio?: () => void, onEnterAdmin?: () => void }) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -70,6 +70,30 @@ export function Splash({ onEnter, onEnterCreator, onEnterMarketplace }: { onEnte
             >
               <ButterflyIcon size={16} />
               Browse Shop
+            </motion.button>
+          )}
+
+          {onEnterMarketStudio && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onEnterMarketStudio}
+              className="group flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 py-3 text-sm font-medium text-white/80 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <Store size={16} />
+              Sell on Marketplace
+            </motion.button>
+          )}
+
+          {onEnterAdmin && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onEnterAdmin}
+              className="group flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-6 py-3 text-sm font-medium text-indigo-300 backdrop-blur-md transition-colors hover:bg-indigo-500/20 hover:text-indigo-200"
+            >
+              <Shield size={16} />
+              Command Center
             </motion.button>
           )}
         </div>

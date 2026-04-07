@@ -35,7 +35,7 @@ interface UseWebSocketResult {
 export function useWebSocket(): UseWebSocketResult {
   const wsRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef<Map<WSEvent, Set<Listener>>>(new Map());
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [connected, setConnected] = useState(false);
   const channelRef = useRef<string>('');
   const retriesRef = useRef(0);

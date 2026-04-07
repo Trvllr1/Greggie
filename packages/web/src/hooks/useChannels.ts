@@ -36,26 +36,30 @@ export function useChannels(category?: string): UseChannelsResult {
 
       if (!mounted.current) return;
 
-      if (railData.status === 'fulfilled' && railData.value.length > 0) {
-        // Mark the primary channel
-        const primaryId = primaryData.status === 'fulfilled' ? primaryData.value.id : null;
-        const mapped = railData.value.map(ch => ({
-          ...ch,
-          isPrimary: ch.id === primaryId,
-        }));
-        setChannels(mapped);
+      if (railData.status === 'fulfilled') {
+        // Backend is reachable — use real data (even if empty)
         setUsingMock(false);
-        if (primaryData.status === 'fulfilled') {
-          setPrimary({ ...primaryData.value, isPrimary: true });
+        if (railData.value.length > 0) {
+          const primaryId = primaryData.status === 'fulfilled' ? primaryData.value.id : null;
+          const mapped = railData.value.map(ch => ({
+            ...ch,
+            isPrimary: ch.id === primaryId,
+          }));
+          setChannels(mapped);
+          if (primaryData.status === 'fulfilled') {
+            setPrimary({ ...primaryData.value, isPrimary: true });
+          }
+        } else {
+          // Backend returned empty — fall back to mocks for display but don't show "unreachable"
+          setChannels(MOCK_CHANNELS);
+          setPrimary(MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0]);
         }
       } else {
-        // Backend returned empty or failed — use mocks
+        // Backend truly unreachable — network error
         setChannels(MOCK_CHANNELS);
         setPrimary(MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0]);
         setUsingMock(true);
-        if (railData.status === 'rejected') {
-          setError(railData.reason?.message ?? 'Failed to load channels');
-        }
+        setError(railData.reason?.message ?? 'Failed to load channels');
       }
     } catch (err) {
       if (!mounted.current) return;

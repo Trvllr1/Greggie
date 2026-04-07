@@ -60,6 +60,7 @@ type Product struct {
 	Name                string                `json:"name"`
 	Description         string                `json:"description"`
 	ImageURL            string                `json:"image_url"`
+	TaxCode             string                `json:"tax_code,omitempty"`
 	PriceCents          int64                 `json:"price_cents"`
 	OriginalPrice       *int64                `json:"original_price_cents,omitempty"`
 	Inventory           int                   `json:"inventory"`
@@ -253,6 +254,7 @@ type TaxEstimate struct {
 	ShippingCents int64   `json:"shipping_cents"`
 	TaxCents      int64   `json:"tax_cents"`
 	TaxRate       float64 `json:"tax_rate"`
+	TaxSource     string  `json:"tax_source,omitempty"`
 	DiscountCents int64   `json:"discount_cents"`
 	TotalCents    int64   `json:"total_cents"`
 }
@@ -504,6 +506,38 @@ type MarketplaceGateway struct {
 	Drops        []Product       `json:"drops"`
 	Auctions     []Product       `json:"auctions"`
 	FeaturedLive *Channel        `json:"featured_live,omitempty"`
+	Billboards   []Billboard     `json:"billboards"`
+}
+
+// ── Billboards ──
+
+type Billboard struct {
+	ID            string     `json:"id"`
+	BillboardType string     `json:"billboard_type"`
+	TargetType    string     `json:"target_type"`
+	TargetID      string     `json:"target_id,omitempty"`
+	SponsorID     string     `json:"sponsor_id,omitempty"`
+	Title         string     `json:"title"`
+	Subtitle      string     `json:"subtitle"`
+	Description   string     `json:"description"`
+	ImageURL      string     `json:"image_url"`
+	CTALabel      string     `json:"cta_label"`
+	BadgeText     string     `json:"badge_text"`
+	BadgeColor    string     `json:"badge_color"`
+	Priority      int        `json:"priority"`
+	StartsAt      time.Time  `json:"starts_at"`
+	EndsAt        *time.Time `json:"ends_at,omitempty"`
+	Status        string     `json:"status"`
+	Impressions   int64      `json:"impressions"`
+	Clicks        int64      `json:"clicks"`
+	BudgetCents   int64      `json:"budget_cents"`
+	SpentCents    int64      `json:"spent_cents"`
+	CPMCents      int64      `json:"cpm_cents"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	// Joined data for frontend rendering
+	TargetChannel *Channel `json:"target_channel,omitempty"`
+	TargetProduct *Product `json:"target_product,omitempty"`
 }
 
 type CreateShopProductRequest struct {
@@ -539,4 +573,175 @@ type RelayQueryResponse struct {
 	ChannelID string       `json:"channel_id"`
 	Query     string       `json:"query"`
 	Matches   []RelayMatch `json:"matches"`
+}
+
+// ── Seller Programs ──
+
+type SellerProgram struct {
+	ID               string     `json:"id"`
+	UserID           string     `json:"user_id"`
+	ProgramType      string     `json:"program_type"`
+	Status           string     `json:"status"`
+	Tier             string     `json:"tier"`
+	AgreedAt         *time.Time `json:"agreed_at,omitempty"`
+	AgreementVersion string     `json:"agreement_version"`
+	ApplicationNote  string     `json:"application_note,omitempty"`
+	RejectionReason  string     `json:"rejection_reason,omitempty"`
+	ApprovedAt       *time.Time `json:"approved_at,omitempty"`
+	ActivatedAt      *time.Time `json:"activated_at,omitempty"`
+	SuspendedAt      *time.Time `json:"suspended_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type EnrollProgramRequest struct {
+	ProgramType     string `json:"program_type"`
+	ApplicationNote string `json:"application_note"`
+	AgreedToTerms   bool   `json:"agreed_to_terms"`
+}
+
+type CommissionRule struct {
+	ID              string  `json:"id"`
+	ProgramType     string  `json:"program_type"`
+	Tier            string  `json:"tier"`
+	CommissionPct   float64 `json:"commission_pct"`
+	ListingFeeCents int64   `json:"listing_fee_cents"`
+	IsActive        bool    `json:"is_active"`
+}
+
+type Payout struct {
+	ID               string     `json:"id"`
+	UserID           string     `json:"user_id"`
+	ProgramType      string     `json:"program_type"`
+	OrderID          string     `json:"order_id"`
+	GrossCents       int64      `json:"gross_cents"`
+	CommissionCents  int64      `json:"commission_cents"`
+	NetCents         int64      `json:"net_cents"`
+	PayoutStatus     string     `json:"payout_status"`
+	StripeTransferID string     `json:"stripe_transfer_id,omitempty"`
+	PaidAt           *time.Time `json:"paid_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
+type SellerDashboard struct {
+	Program           SellerProgram `json:"program"`
+	TotalRevenueCents int64         `json:"total_revenue_cents"`
+	TotalOrders       int           `json:"total_orders"`
+	PendingPayouts    int64         `json:"pending_payouts_cents"`
+	PaidPayouts       int64         `json:"paid_payouts_cents"`
+	CommissionPct     float64       `json:"commission_pct"`
+	CurrentTier       string        `json:"current_tier"`
+	// CSP-specific
+	TotalStreamHours float64 `json:"total_stream_hours,omitempty"`
+	TotalViewers     int64   `json:"total_viewers,omitempty"`
+	// MSP-specific
+	ActiveListings int `json:"active_listings,omitempty"`
+	PendingOrders  int `json:"pending_orders,omitempty"`
+	ShippedOrders  int `json:"shipped_orders,omitempty"`
+}
+
+type FulfillmentRecord struct {
+	ID              string     `json:"id"`
+	OrderID         string     `json:"order_id"`
+	SellerID        string     `json:"seller_id"`
+	FulfillmentType string     `json:"fulfillment_type"`
+	TrackingNumber  string     `json:"tracking_number,omitempty"`
+	Carrier         string     `json:"carrier,omitempty"`
+	ShippedAt       *time.Time `json:"shipped_at,omitempty"`
+	DeliveredAt     *time.Time `json:"delivered_at,omitempty"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type UpdateFulfillmentRequest struct {
+	TrackingNumber *string `json:"tracking_number,omitempty"`
+	Carrier        *string `json:"carrier,omitempty"`
+	Status         *string `json:"status,omitempty"`
+}
+
+type SellerOrderView struct {
+	Order
+	Items           []OrderItem        `json:"items"`
+	Fulfillment     *FulfillmentRecord `json:"fulfillment,omitempty"`
+	BuyerEmail      string             `json:"buyer_email"`
+	ShippingAddress *ShippingAddress   `json:"shipping_address,omitempty"`
+}
+
+type SellerAnalyticsDay struct {
+	Date           string  `json:"date"`
+	RevenueCents   int64   `json:"revenue_cents"`
+	OrdersCount    int     `json:"orders_count"`
+	UnitsSold      int     `json:"units_sold"`
+	Views          int     `json:"views"`
+	ConversionRate float64 `json:"conversion_rate"`
+}
+
+// ── M10: Payout transfer join model ───────────────────────────
+
+type PayoutWithAccount struct {
+	PayoutID        string `json:"payout_id"`
+	UserID          string `json:"user_id"`
+	ProgramType     string `json:"program_type"`
+	OrderID         string `json:"order_id"`
+	NetCents        int64  `json:"net_cents"`
+	StripeAccountID string `json:"stripe_account_id"`
+	Email           string `json:"email"`
+}
+
+// ── M11: Password Reset ──────────────────────────────────────
+
+type PasswordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type PasswordResetConfirm struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// ── M12: Uploads ──────────────────────────────────────────────
+
+type Upload struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	EntityType  string    `json:"entity_type"` // product, channel, user, shop
+	EntityID    string    `json:"entity_id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	SizeBytes   int64     `json:"size_bytes"`
+	StorageKey  string    `json:"storage_key"`
+	URL         string    `json:"url"`
+	Status      string    `json:"status"` // pending, completed
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type PresignRequest struct {
+	EntityType  string `json:"entity_type"`
+	EntityID    string `json:"entity_id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+}
+
+type PresignResponse struct {
+	UploadID  string `json:"upload_id"`
+	UploadURL string `json:"upload_url"`
+	PublicURL string `json:"public_url"`
+}
+
+// ── M14: Admin ────────────────────────────────────────────────
+
+type AdminStats struct {
+	TotalUsers          int   `json:"total_users"`
+	TotalOrders         int   `json:"total_orders"`
+	TotalRevenueCents   int64 `json:"total_revenue_cents"`
+	LiveChannels        int   `json:"live_channels"`
+	PendingPrograms     int   `json:"pending_programs"`
+	ActiveProducts      int   `json:"active_products"`
+	PendingPayoutsCents int64 `json:"pending_payouts_cents"`
+}
+
+type AdminUpdateProgramRequest struct {
+	Status string `json:"status"` // approved, rejected, active, suspended, closed
+	Reason string `json:"reason,omitempty"`
 }

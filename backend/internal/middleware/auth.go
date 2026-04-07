@@ -129,3 +129,14 @@ func ParseToken(tokenStr string) (userID string, role string, err error) {
 	}
 	return claims.UserID, claims.Role, nil
 }
+
+// RequireAdmin rejects non-admin users. Must be used after RequireAuth.
+func RequireAdmin() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		role, _ := c.Locals("user_role").(string)
+		if role != "admin" {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "admin access required"})
+		}
+		return c.Next()
+	}
+}

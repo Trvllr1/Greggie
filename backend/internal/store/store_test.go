@@ -83,7 +83,7 @@ func TestCreateAndGetUser(t *testing.T) {
 		DisplayName:  "Test User",
 		Email:        "test@example.com",
 		PasswordHash: "$2a$10$fakehash",
-		Role:         "viewer",
+		Role:         "buyer",
 	}
 	if err := s.CreateUser(u); err != nil {
 		t.Fatalf("CreateUser: %v", err)
@@ -145,9 +145,12 @@ func TestChannelCRUD(t *testing.T) {
 		t.Fatal("expected channel ID to be set")
 	}
 
-	// Set to LIVE for rail/primary queries
+	// Set to LIVE + primary for rail/primary queries
 	if err := s.UpdateChannelStatus(ch.ID, "LIVE"); err != nil {
 		t.Fatalf("UpdateChannelStatus: %v", err)
+	}
+	if _, err := s.PG.Exec("UPDATE channels SET is_primary = true WHERE id = $1", ch.ID); err != nil {
+		t.Fatalf("set is_primary: %v", err)
 	}
 
 	// GetByID
@@ -284,7 +287,7 @@ func TestCreateOrder(t *testing.T) {
 	// Setup: user + channel + product
 	u := &models.User{
 		Username: "buyer1", DisplayName: "Buyer", Email: "buyer@test.com",
-		PasswordHash: "$2a$10$fakehash", Role: "viewer",
+		PasswordHash: "$2a$10$fakehash", Role: "buyer",
 	}
 	if err := s.CreateUser(u); err != nil {
 		t.Fatalf("CreateUser: %v", err)
@@ -344,7 +347,7 @@ func TestFollowUnfollow(t *testing.T) {
 
 	u := &models.User{
 		Username: "follower1", DisplayName: "Follower", Email: "follow@test.com",
-		PasswordHash: "$2a$10$fakehash", Role: "viewer",
+		PasswordHash: "$2a$10$fakehash", Role: "buyer",
 	}
 	if err := s.CreateUser(u); err != nil {
 		t.Fatalf("CreateUser: %v", err)
@@ -400,11 +403,279 @@ func TestFollowUnfollow(t *testing.T) {
 // cleanup truncates test tables in correct order (respecting FK constraints)
 func cleanup(t *testing.T, s *Store) {
 	t.Helper()
-	tables := []string{"events", "order_items", "orders", "checkout_sessions", "follows",
-		"products", "relay_entries", "channels", "wallets", "users"}
+	tables := []string{"fulfillment_records", "payouts", "seller_analytics_daily",
+		"seller_programs", "bids", "product_reviews", "shipping_addresses",
+		"cart_items", "carts", "events", "order_items", "orders", "checkout_sessions",
+		"follows", "products", "relay_entries", "shops", "channels", "wallets", "users"}
 	for _, tbl := range tables {
 		if _, err := s.PG.Exec("DELETE FROM " + tbl); err != nil {
 			t.Logf("cleanup %s: %v", tbl, err)
 		}
+	}
+}
+
+// ── Seller Fulfillment & Payout tests ──
+
+// getOrderStatus is a test helper that reads an order's status directly.
+func getOrderStatus(t *testing.T, s *Store, orderID string) string {
+	t.Helper()
+	var status string
+	if err := s.PG.QueryRow("SELECT status FROM orders WHERE id = $1", orderID).Scan(&status); err != nil {
+		t.Fatalf("getOrderStatus(%s): %v", orderID, err)
+	}
+	return status
+}
+
+// setupSellerOrder creates a seller, buyer, channel, product, and order for fulfillment tests.
+func setupSellerOrder(t *testing.T, s *Store) (seller, buyer *models.User, order *models.Order) {
+	t.Helper()
+	seller = &models.User{
+		Username: "seller_ff", DisplayName: "Seller", Email: "seller_ff@test.com",
+		PasswordHash: "$2a$10$fakehash", Role: "creator",
+	}
+	if err := s.CreateUser(seller); err != nil {
+		t.Fatalf("CreateUser(seller): %v", err)
+	}
+	buyer = &models.User{
+		Username: "buyer_ff", DisplayName: "Buyer", Email: "buyer_ff@test.com",
+		PasswordHash: "$2a$10$fakehash", Role: "buyer",
+	}
+	if err := s.CreateUser(buyer); err != nil {
+		t.Fatalf("CreateUser(buyer): %v", err)
+	}
+	if err := s.CreateWallet(buyer.ID); err != nil {
+		t.Fatalf("CreateWallet: %v", err)
+	}
+
+	ch := &models.Channel{
+		CreatorID: seller.ID, Title: "FF Channel", Category: "Fashion", SaleType: "buy_now",
+	}
+	if err := s.CreateChannel(ch); err != nil {
+		t.Fatalf("CreateChannel: %v", err)
+	}
+
+	p := &models.Product{
+		ChannelID: ch.ID, Name: "FF Shoe", PriceCents: 5000, Inventory: 10, SaleType: "buy_now",
+	}
+	if err := s.CreateProduct(p); err != nil {
+		t.Fatalf("CreateProduct: %v", err)
+	}
+
+	order = &models.Order{
+		UserID: buyer.ID, ChannelID: ch.ID, Status: "pending", TotalCents: 5000,
+		Items: []models.OrderItem{{ProductID: p.ID, Quantity: 1, PriceCents: 5000}},
+	}
+	if err := s.CreateOrder(order); err != nil {
+		t.Fatalf("CreateOrder: %v", err)
+	}
+	return
+}
+
+func TestCreateFulfillmentAndGetByOrderAndSeller(t *testing.T) {
+	s := getTestDB(t)
+	defer s.PG.Close()
+	cleanup(t, s)
+
+	seller, _, order := setupSellerOrder(t, s)
+
+	fr := &models.FulfillmentRecord{
+		OrderID:         order.ID,
+		SellerID:        seller.ID,
+		FulfillmentType: "fbm",
+		Status:          "processing",
+	}
+	if err := s.CreateFulfillmentRecord(fr); err != nil {
+		t.Fatalf("CreateFulfillmentRecord: %v", err)
+	}
+	if fr.ID == "" {
+		t.Fatal("expected fulfillment ID to be set")
+	}
+
+	// GetFulfillmentByOrderAndSeller returns the record
+	got, err := s.GetFulfillmentByOrderAndSeller(order.ID, seller.ID)
+	if err != nil {
+		t.Fatalf("GetFulfillmentByOrderAndSeller: %v", err)
+	}
+	if got.ID != fr.ID {
+		t.Errorf("expected ID %s, got %s", fr.ID, got.ID)
+	}
+	if got.Status != "processing" {
+		t.Errorf("expected status processing, got %s", got.Status)
+	}
+
+	// Different seller returns sql.ErrNoRows
+	_, err = s.GetFulfillmentByOrderAndSeller(order.ID, "nonexistent-seller")
+	if err == nil {
+		t.Error("expected error for nonexistent seller, got nil")
+	}
+}
+
+func TestUpdateFulfillmentRecord(t *testing.T) {
+	s := getTestDB(t)
+	defer s.PG.Close()
+	cleanup(t, s)
+
+	seller, _, order := setupSellerOrder(t, s)
+
+	fr := &models.FulfillmentRecord{
+		OrderID: order.ID, SellerID: seller.ID,
+		FulfillmentType: "fbm", Status: "processing",
+	}
+	if err := s.CreateFulfillmentRecord(fr); err != nil {
+		t.Fatalf("CreateFulfillmentRecord: %v", err)
+	}
+
+	// Update tracking info and status
+	tracking := "1Z999AA10123456784"
+	carrier := "UPS"
+	status := "shipped"
+	if err := s.UpdateFulfillmentRecord(fr.ID, &models.UpdateFulfillmentRequest{
+		TrackingNumber: &tracking,
+		Carrier:        &carrier,
+		Status:         &status,
+	}); err != nil {
+		t.Fatalf("UpdateFulfillmentRecord: %v", err)
+	}
+
+	got, _ := s.GetFulfillmentByOrderAndSeller(order.ID, seller.ID)
+	if got.TrackingNumber != tracking {
+		t.Errorf("expected tracking %s, got %s", tracking, got.TrackingNumber)
+	}
+	if got.Carrier != carrier {
+		t.Errorf("expected carrier %s, got %s", carrier, got.Carrier)
+	}
+	if got.Status != "shipped" {
+		t.Errorf("expected status shipped, got %s", got.Status)
+	}
+	if got.ShippedAt == nil {
+		t.Error("expected shipped_at to be set")
+	}
+}
+
+func TestSyncOrderStatusFromFulfillment(t *testing.T) {
+	s := getTestDB(t)
+	defer s.PG.Close()
+	cleanup(t, s)
+
+	seller, _, order := setupSellerOrder(t, s)
+
+	// Create a second seller with their own fulfillment record
+	seller2 := &models.User{
+		Username: "seller_ff2", DisplayName: "Seller2", Email: "seller_ff2@test.com",
+		PasswordHash: "$2a$10$fakehash", Role: "creator",
+	}
+	if err := s.CreateUser(seller2); err != nil {
+		t.Fatalf("CreateUser(seller2): %v", err)
+	}
+
+	// Both sellers have fulfillment records on the same order
+	fr1 := &models.FulfillmentRecord{
+		OrderID: order.ID, SellerID: seller.ID,
+		FulfillmentType: "fbm", Status: "processing",
+	}
+	fr2 := &models.FulfillmentRecord{
+		OrderID: order.ID, SellerID: seller2.ID,
+		FulfillmentType: "fbm", Status: "processing",
+	}
+	if err := s.CreateFulfillmentRecord(fr1); err != nil {
+		t.Fatalf("CreateFulfillmentRecord(seller1): %v", err)
+	}
+	if err := s.CreateFulfillmentRecord(fr2); err != nil {
+		t.Fatalf("CreateFulfillmentRecord(seller2): %v", err)
+	}
+
+	// Both processing → order should be "processing"
+	if err := s.SyncOrderStatusFromFulfillment(order.ID); err != nil {
+		t.Fatalf("SyncOrderStatusFromFulfillment: %v", err)
+	}
+	if st := getOrderStatus(t, s, order.ID); st != "processing" {
+		t.Errorf("expected order status processing, got %s", st)
+	}
+
+	// Seller 1 ships → order should be "shipped" (at least one shipped)
+	shipped := "shipped"
+	if err := s.UpdateFulfillmentRecord(fr1.ID, &models.UpdateFulfillmentRequest{Status: &shipped}); err != nil {
+		t.Fatalf("UpdateFulfillmentRecord: %v", err)
+	}
+	if err := s.SyncOrderStatusFromFulfillment(order.ID); err != nil {
+		t.Fatalf("SyncOrderStatusFromFulfillment: %v", err)
+	}
+	if st := getOrderStatus(t, s, order.ID); st != "shipped" {
+		t.Errorf("expected order status shipped, got %s", st)
+	}
+
+	// Both delivered → order should be "delivered"
+	delivered := "delivered"
+	if err := s.UpdateFulfillmentRecord(fr1.ID, &models.UpdateFulfillmentRequest{Status: &delivered}); err != nil {
+		t.Fatalf("UpdateFulfillmentRecord(fr1→delivered): %v", err)
+	}
+	if err := s.UpdateFulfillmentRecord(fr2.ID, &models.UpdateFulfillmentRequest{Status: &delivered}); err != nil {
+		t.Fatalf("UpdateFulfillmentRecord(fr2→delivered): %v", err)
+	}
+	if err := s.SyncOrderStatusFromFulfillment(order.ID); err != nil {
+		t.Fatalf("SyncOrderStatusFromFulfillment: %v", err)
+	}
+	if st := getOrderStatus(t, s, order.ID); st != "delivered" {
+		t.Errorf("expected order status delivered, got %s", st)
+	}
+}
+
+func TestSyncOrderStatusNoFulfillment(t *testing.T) {
+	s := getTestDB(t)
+	defer s.PG.Close()
+	cleanup(t, s)
+
+	_, _, order := setupSellerOrder(t, s)
+
+	// No fulfillment records → sync is a no-op, order stays pending
+	if err := s.SyncOrderStatusFromFulfillment(order.ID); err != nil {
+		t.Fatalf("SyncOrderStatusFromFulfillment: %v", err)
+	}
+	if st := getOrderStatus(t, s, order.ID); st != "pending" {
+		t.Errorf("expected order status pending (unchanged), got %s", st)
+	}
+}
+
+func TestCreatePayoutIdempotent(t *testing.T) {
+	s := getTestDB(t)
+	defer s.PG.Close()
+	cleanup(t, s)
+
+	seller, _, order := setupSellerOrder(t, s)
+
+	p1 := &models.Payout{
+		UserID: seller.ID, ProgramType: "csp", OrderID: order.ID,
+		GrossCents: 5000, CommissionCents: 500, NetCents: 4500, PayoutStatus: "pending",
+	}
+	if err := s.CreatePayout(p1); err != nil {
+		t.Fatalf("CreatePayout (first): %v", err)
+	}
+	if p1.ID == "" {
+		t.Fatal("expected payout ID")
+	}
+	firstID := p1.ID
+
+	// Upsert with updated amounts – same (user, program, order) should NOT create a second row
+	p2 := &models.Payout{
+		UserID: seller.ID, ProgramType: "csp", OrderID: order.ID,
+		GrossCents: 6000, CommissionCents: 600, NetCents: 5400, PayoutStatus: "pending",
+	}
+	if err := s.CreatePayout(p2); err != nil {
+		t.Fatalf("CreatePayout (upsert): %v", err)
+	}
+	if p2.ID != firstID {
+		t.Errorf("expected upsert to return same ID %s, got %s", firstID, p2.ID)
+	}
+
+	// Verify only one row exists
+	payouts, err := s.GetPayouts(seller.ID, "csp", 50, 0)
+	if err != nil {
+		t.Fatalf("GetPayouts: %v", err)
+	}
+	if len(payouts) != 1 {
+		t.Errorf("expected 1 payout row, got %d", len(payouts))
+	}
+	if payouts[0].GrossCents != 6000 {
+		t.Errorf("expected upserted gross 6000, got %d", payouts[0].GrossCents)
 	}
 }

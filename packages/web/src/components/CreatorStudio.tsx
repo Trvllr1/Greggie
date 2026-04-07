@@ -11,11 +11,47 @@ import * as api from '../services/api';
 import { ButterflyIcon } from './ButterflyIcon';
 import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
 
-type Tab = 'products' | 'chat' | 'analytics' | 'tools';
+type Tab = 'products' | 'chat' | 'analytics' | 'tools' | 'revenue' | 'orders';
 
 type CreatorStudioProps = {
   onExit: () => void;
 };
+
+function getProgramStatusLabel(status?: api.SellerProgram['status']) {
+  switch (status) {
+    case 'pending':
+      return 'Under review';
+    case 'approved':
+      return 'Approved';
+    case 'active':
+      return 'Active';
+    case 'suspended':
+      return 'Suspended';
+    case 'rejected':
+      return 'Needs attention';
+    case 'closed':
+      return 'Closed';
+    default:
+      return 'Not enrolled';
+  }
+}
+
+function getProgramStatusTone(status?: api.SellerProgram['status']) {
+  switch (status) {
+    case 'active':
+      return 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30';
+    case 'approved':
+      return 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+    case 'pending':
+      return 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
+    case 'suspended':
+    case 'rejected':
+    case 'closed':
+      return 'bg-red-500/15 text-red-300 border border-red-500/30';
+    default:
+      return 'bg-gray-700 text-gray-300 border border-gray-600';
+  }
+}
 
 /* ── Add Product Modal ───────────────────────────────── */
 function AddProductModal({
@@ -244,6 +280,94 @@ function ChannelSettingsModal({
   );
 }
 
+/* ── CSP Enrollment Modal ──────────────────────────────── */
+function CSPEnrollmentModal({
+  onClose,
+  onEnroll,
+  enrolling,
+}: {
+  onClose: () => void;
+  onEnroll: (note: string) => void;
+  enrolling: boolean;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  const [note, setNote] = useState('');
+
+  const tiers = [
+    { name: 'New', pct: '20%', desc: 'Starting tier for all creators' },
+    { name: 'Rising', pct: '15%', desc: '50+ orders, $5K+ revenue' },
+    { name: 'Established', pct: '12%', desc: '200+ orders, $25K+ revenue' },
+    { name: 'Partner', pct: '10%', desc: 'Invite-only, top creators' },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg bg-gray-900 rounded-2xl border border-gray-700 p-6 mx-4 max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-white">Creator-Seller Program</h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-800 text-gray-400"><X size={18} /></button>
+        </div>
+
+        <p className="text-sm text-gray-400 mb-4">
+          Join the Greggie Creator-Seller Program (CSP) to monetize your live streams. Sell products during broadcasts, earn revenue, and grow through our tiered commission system.
+        </p>
+
+        <div className="bg-gray-800/60 rounded-xl p-4 mb-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Commission Tiers</h4>
+          <div className="space-y-2">
+            {tiers.map(t => (
+              <div key={t.name} className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-sm font-bold text-white">{t.name}</span>
+                  <span className="text-[11px] text-gray-500 ml-2">{t.desc}</span>
+                </div>
+                <span className="text-sm font-bold text-indigo-400">{t.pct}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Tell us about yourself (optional)</label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="What do you plan to sell? What's your content niche?"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" />
+        </div>
+
+        <label className="flex items-start gap-3 mb-6 cursor-pointer group">
+          <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" />
+          <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">
+            I agree to the Greggie Creator-Seller Program terms, including the commission structure and payout policies.
+          </span>
+        </label>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-400 bg-gray-800 hover:bg-gray-700 transition-colors">Cancel</button>
+          <button
+            disabled={!agreed || enrolling}
+            onClick={() => onEnroll(note)}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {enrolling ? 'Enrolling...' : 'Join CSP'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 /* ── Main Creator Studio ─────────────────────────────── */
 export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -265,6 +389,14 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [savingProduct, setSavingProduct] = useState(false);
   const [streamTimer, setStreamTimer] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // CSP state
+  const [cspStatus, setCspStatus] = useState<api.SellerProgram | null>(null);
+  const [cspDashboard, setCspDashboard] = useState<api.SellerDashboard | null>(null);
+  const [cspOrders, setCspOrders] = useState<api.SellerOrderView[]>([]);
+  const [cspPayouts, setCspPayouts] = useState<api.SellerPayout[]>([]);
+  const [showCSPEnroll, setShowCSPEnroll] = useState(false);
+  const [enrollingCSP, setEnrollingCSP] = useState(false);
 
   // Stream credentials state
   const [streamCredentials, setStreamCredentials] = useState<{ rtmp_url: string; stream_key: string; hls_url: string } | null>(null);
@@ -300,6 +432,13 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         setProducts(ch.products);
         setIsLive(ch.type === 'LIVE');
         setViewers(ch.viewers);
+      }
+      // Load CSP status
+      try {
+        const status = await api.getProgramStatus('csp');
+        setCspStatus(status.program);
+      } catch {
+        // Not enrolled yet — that's fine
       }
     } catch {
       // No channels yet
@@ -470,6 +609,48 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
     setCountdownActive(true);
   };
 
+  const handleCSPEnroll = async (note: string) => {
+    setEnrollingCSP(true);
+    try {
+      const program = await api.enrollProgram('csp', note);
+      setCspStatus(program);
+      setShowCSPEnroll(false);
+    } catch { /* ignore */ }
+    setEnrollingCSP(false);
+  };
+
+  const loadCSPDashboard = useCallback(async () => {
+    if (!cspStatus || cspStatus.status !== 'active') return;
+    try {
+      const d = await api.getCSPDashboard();
+      setCspDashboard(d);
+    } catch { /* ignore */ }
+  }, [cspStatus]);
+
+  const loadCSPOrders = useCallback(async () => {
+    if (!cspStatus || cspStatus.status !== 'active') return;
+    try {
+      const o = await api.getSellerOrders('csp');
+      setCspOrders(o);
+    } catch { /* ignore */ }
+  }, [cspStatus]);
+
+  const loadCSPPayouts = useCallback(async () => {
+    if (!cspStatus || cspStatus.status !== 'active') return;
+    try {
+      const p = await api.getSellerPayouts('csp');
+      setCspPayouts(p);
+    } catch { /* ignore */ }
+  }, [cspStatus]);
+
+  // Load CSP data when switching to relevant tabs
+  useEffect(() => {
+    if (activeTab === 'revenue') { loadCSPDashboard(); loadCSPPayouts(); }
+    if (activeTab === 'orders') loadCSPOrders();
+  }, [activeTab, loadCSPDashboard, loadCSPOrders, loadCSPPayouts]);
+
+  const cspActive = cspStatus?.status === 'active';
+
   /* ── Loading ── */
   if (loading) {
     return (
@@ -506,6 +687,8 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
     { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'tools', label: 'Tools', icon: Zap },
+    { id: 'revenue', label: 'Revenue', icon: DollarSign },
+    { id: 'orders', label: 'Orders', icon: Tag },
   ];
 
   /* ── Main Dashboard Layout ── */
@@ -526,6 +709,11 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                   <Radio size={10} /> Live
                 </span>
               )}
+              {cspStatus && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+                  {cspActive ? cspStatus.tier : getProgramStatusLabel(cspStatus.status)}
+                </span>
+              )}
             </div>
             <span className="text-[11px] text-gray-500">{channel.category}</span>
           </div>
@@ -542,6 +730,38 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
           </button>
         </div>
       </div>
+
+      {/* ── CSP Enrollment Banner ── */}
+      {!cspStatus && (
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-2 bg-indigo-600/10 border-b border-indigo-500/20">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={14} className="text-indigo-400" />
+            <span className="text-xs text-indigo-300">Join the <span className="font-bold">Creator-Seller Program</span> to earn revenue from your streams</span>
+          </div>
+          <button onClick={() => setShowCSPEnroll(true)}
+            className="px-3 py-1 rounded-lg bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 transition-colors">
+            Join CSP
+          </button>
+        </div>
+      )}
+
+      {cspStatus && cspStatus.status !== 'active' && (
+        <div className={`flex-shrink-0 flex items-center justify-between px-5 py-2 border-b ${cspStatus.status === 'pending' || cspStatus.status === 'approved' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+          <div className="flex items-center gap-2">
+            <TrendingUp size={14} className={cspStatus.status === 'pending' || cspStatus.status === 'approved' ? 'text-amber-300' : 'text-red-300'} />
+            <span className="text-xs text-white/80">
+              {cspStatus.status === 'pending' && 'Your CSP application is under review. Revenue, payouts, and seller order actions unlock after activation.'}
+              {cspStatus.status === 'approved' && 'Your CSP application is approved and awaiting activation. Revenue and order operations will unlock once the program is live.'}
+              {cspStatus.status === 'suspended' && 'Your CSP access is suspended. Revenue and seller order actions are temporarily unavailable.'}
+              {cspStatus.status === 'rejected' && 'Your CSP application needs attention before seller operations can be enabled.'}
+              {cspStatus.status === 'closed' && 'Your CSP enrollment is closed. Re-enrollment is required before seller operations can resume.'}
+            </span>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+            {getProgramStatusLabel(cspStatus.status)}
+          </span>
+        </div>
+      )}
 
       {/* ── Body: Preview + Panel ── */}
       <div className="flex-1 flex min-h-0">
@@ -997,6 +1217,207 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                 </div>
               </div>
             )}
+
+            {/* ── Revenue Tab (CSP) ── */}
+            {activeTab === 'revenue' && (
+              <div className="p-4 space-y-4">
+                {!cspStatus ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <DollarSign size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                    <p className="text-sm font-medium mb-2">Join the Creator-Seller Program</p>
+                    <p className="text-xs text-gray-600 mb-4 text-center max-w-xs">Enroll in CSP to track your revenue, payouts, and commission tier</p>
+                    <button onClick={() => setShowCSPEnroll(true)}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 transition-colors">
+                      Join CSP
+                    </button>
+                  </div>
+                ) : !cspActive ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <DollarSign size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                    <p className="text-sm font-medium mb-2">CSP revenue tools unlock after activation</p>
+                    <p className="text-xs text-gray-600 mb-4 text-center max-w-xs">
+                      {cspStatus.status === 'pending' && 'Your application is in review. We will unlock payouts, commissions, and revenue tracking once CSP is active.'}
+                      {cspStatus.status === 'approved' && 'Your application is approved and queued for activation. Revenue reporting will appear as soon as the program goes live.'}
+                      {cspStatus.status !== 'pending' && cspStatus.status !== 'approved' && 'This CSP enrollment is not active right now, so revenue controls are temporarily unavailable.'}
+                    </p>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+                      {getProgramStatusLabel(cspStatus.status)}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <h2 className="text-sm font-bold mb-1">Revenue Overview</h2>
+                      <p className="text-[11px] text-gray-500">Your Creator-Seller Program earnings</p>
+                    </div>
+
+                    {/* Tier progress */}
+                    <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-xl p-4 border border-indigo-500/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">Current Tier</span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-xs font-bold text-indigo-300 uppercase">{cspDashboard?.current_tier || cspStatus.tier}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {['new', 'rising', 'established', 'partner'].map((tier, i) => (
+                          <div key={tier} className="flex items-center gap-1 flex-1">
+                            <div className={`h-1.5 rounded-full flex-1 ${
+                              (cspDashboard?.current_tier || cspStatus.tier) === tier || ['new','rising','established','partner'].indexOf(cspDashboard?.current_tier || cspStatus.tier) >= i
+                                ? 'bg-indigo-500' : 'bg-gray-700'
+                            }`} />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between mt-1.5">
+                        {['New', 'Rising', 'Est.', 'Partner'].map(t => (
+                          <span key={t} className="text-[9px] text-gray-500">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Revenue metrics */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="p-1.5 rounded-lg bg-green-500/20"><DollarSign size={14} className="text-green-400" /></div>
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Total Revenue</span>
+                        </div>
+                        <p className="text-2xl font-bold text-green-400">${((cspDashboard?.total_revenue_cents || 0) / 100).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="p-1.5 rounded-lg bg-indigo-500/20"><TrendingUp size={14} className="text-indigo-400" /></div>
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Commission</span>
+                        </div>
+                        <p className="text-2xl font-bold text-indigo-400">{cspDashboard?.commission_pct || 20}%</p>
+                      </div>
+                      <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="p-1.5 rounded-lg bg-yellow-500/20"><Clock size={14} className="text-yellow-400" /></div>
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Pending</span>
+                        </div>
+                        <p className="text-2xl font-bold text-yellow-400">${((cspDashboard?.pending_payouts_cents || 0) / 100).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="p-1.5 rounded-lg bg-green-500/20"><Check size={14} className="text-green-400" /></div>
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Paid Out</span>
+                        </div>
+                        <p className="text-2xl font-bold">${((cspDashboard?.paid_payouts_cents || 0) / 100).toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    {/* Recent payouts */}
+                    <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Payout History</h3>
+                      {cspPayouts.length === 0 ? (
+                        <p className="text-xs text-gray-500 text-center py-4">No payouts yet — revenue will appear after your first sale</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {cspPayouts.slice(0, 10).map(p => (
+                            <div key={p.id} className="flex items-center justify-between py-1.5 border-b border-gray-800 last:border-0">
+                              <div>
+                                <span className="text-xs text-white font-medium">${(p.net_cents / 100).toFixed(2)}</span>
+                                <span className="text-[10px] text-gray-500 ml-2">gross ${(p.gross_cents / 100).toFixed(2)} - ${(p.commission_cents / 100).toFixed(2)} fee</span>
+                              </div>
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                p.payout_status === 'paid' ? 'bg-green-500/20 text-green-400' :
+                                p.payout_status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-gray-700 text-gray-400'
+                              }`}>{p.payout_status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Orders Tab (CSP) ── */}
+            {activeTab === 'orders' && (
+              <div className="p-4 space-y-3">
+                {!cspStatus ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <Package size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                    <p className="text-sm font-medium">Enroll in CSP to manage orders</p>
+                  </div>
+                ) : !cspActive ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <Package size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                    <p className="text-sm font-medium">Seller order actions unlock after CSP activation</p>
+                    <p className="text-xs text-gray-600 mt-1 text-center max-w-xs">You can keep building your channel now. Fulfillment actions appear once the CSP review lifecycle reaches active.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h2 className="text-sm font-bold">Stream Orders ({cspOrders.length})</h2>
+                        <p className="text-[11px] text-gray-500">Orders from your live streams</p>
+                      </div>
+                    </div>
+                    {cspOrders.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                        <Package size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                        <p className="text-sm font-medium">No orders yet</p>
+                        <p className="text-xs text-gray-600 mt-1">Orders from your live streams will appear here</p>
+                      </div>
+                    ) : (
+                      cspOrders.map(order => (
+                        <div key={order.id} className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <span className="text-xs font-mono text-gray-400">#{order.id.slice(0, 8)}</span>
+                              <span className="text-[10px] text-gray-500 ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                              order.status === 'delivered' ? 'bg-green-500/20 text-green-400' :
+                              order.status === 'shipped' ? 'bg-blue-500/20 text-blue-400' :
+                              order.status === 'confirmed' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-gray-700 text-gray-400'
+                            }`}>{order.status}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-400">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                            <span className="text-sm font-bold text-green-400">${(order.total_cents / 100).toFixed(2)}</span>
+                          </div>
+                          {order.buyer_email && (
+                            <p className="text-[10px] text-gray-500 mt-1">{order.buyer_email}</p>
+                          )}
+                          {/* Fulfillment actions */}
+                          {(order.status === 'pending' || order.status === 'confirmed') && (
+                            <div className="flex gap-2 mt-3">
+                              {order.status === 'pending' && (
+                                <button
+                                  onClick={async () => {
+                                    await api.updateOrderFulfillment(order.id, { status: 'processing' });
+                                    loadCSPOrders();
+                                  }}
+                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                                >
+                                  Confirm Order
+                                </button>
+                              )}
+                              {order.status === 'confirmed' && (
+                                <button
+                                  onClick={async () => {
+                                    await api.updateOrderFulfillment(order.id, { status: 'shipped' });
+                                    loadCSPOrders();
+                                  }}
+                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                                >
+                                  Mark Shipped
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1010,6 +1431,11 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
       <AnimatePresence>
         {showSettings && (
           <ChannelSettingsModal channel={channel} onClose={() => setShowSettings(false)} onSave={handleUpdateChannel} onDelete={handleDeleteChannel} />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showCSPEnroll && (
+          <CSPEnrollmentModal onClose={() => setShowCSPEnroll(false)} onEnroll={handleCSPEnroll} enrolling={enrollingCSP} />
         )}
       </AnimatePresence>
     </div>

@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"greggie/backend/internal/auction"
+	"greggie/backend/internal/email"
 	"greggie/backend/internal/handlers"
 	"greggie/backend/internal/middleware"
 	"greggie/backend/internal/payments"
+	"greggie/backend/internal/storage"
 	"greggie/backend/internal/store"
 	"greggie/backend/internal/ws"
 
@@ -37,6 +39,12 @@ func main() {
 
 	// ── Stripe payments ──
 	payments.Init()
+
+	// ── Email service ──
+	email.Init()
+
+	// ── S3 storage ──
+	storage.Init()
 
 	// ── WebSocket hub ──
 	hub := ws.NewHub()
@@ -113,6 +121,10 @@ func main() {
 	shop := &handlers.ShopHandler{Store: db}
 	marketplace := &handlers.MarketplaceHandler{Store: db}
 	cart := &handlers.CartHandler{Store: db}
+	sellerProg := &handlers.SellerProgramHandler{Store: db}
+	admin := &handlers.AdminHandler{Store: db}
+	uploads := &handlers.UploadHandler{Store: db}
+	billboard := &handlers.BillboardHandler{Store: db}
 
 	// ── Auction engine (auto-ends expired auctions) ──
 	auctionEngine := auction.NewEngine(db, hub)
@@ -150,6 +162,8 @@ func main() {
 	api.Post("/auth/register", authLimiter, auth.Register)
 	api.Post("/auth/login", authLimiter, auth.Login)
 	api.Post("/auth/dev", authLimiter, auth.DevLogin)
+	api.Post("/auth/forgot-password", authLimiter, auth.ForgotPassword)
+	api.Post("/auth/reset-password", authLimiter, auth.ResetPassword)
 
 	// Channels (public)
 	api.Get("/channels/primary", channels.GetPrimary)
@@ -179,6 +193,10 @@ func main() {
 	api.Get("/marketplace/products", marketplace.SearchProducts)
 	api.Get("/marketplace/trending", marketplace.GetTrending)
 	api.Get("/marketplace/gateway", marketplace.Gateway)
+
+	// Billboard tracking (public)
+	api.Post("/billboards/:id/impression", billboard.TrackImpression)
+	api.Post("/billboards/:id/click", billboard.TrackClick)
 
 	// Shops (public)
 	api.Get("/shops/:slug", shop.GetShopBySlug)
@@ -264,6 +282,37 @@ func main() {
 	protected.Delete("/creator/channels/:id/products/:productId", creator.DeleteProduct)
 	protected.Post("/creator/channels/:id/pin", creator.PinProduct)
 	protected.Get("/creator/channels/:id/analytics", creator.GetAnalytics)
+
+	// Seller Programs (auth required) — specific paths before parameterized
+	protected.Post("/programs/enroll", sellerProg.EnrollProgram)
+	protected.Get("/programs", sellerProg.GetMyPrograms)
+	protected.Get("/programs/csp/dashboard", sellerProg.GetCSPDashboard)
+	protected.Get("/programs/msp/dashboard", sellerProg.GetMSPDashboard)
+	protected.Get("/programs/:type", sellerProg.GetProgramStatus)
+	protected.Get("/programs/:type/orders", sellerProg.GetSellerOrders)
+	protected.Get("/programs/:type/payouts", sellerProg.GetSellerPayouts)
+	protected.Get("/programs/:type/analytics", sellerProg.GetSellerAnalytics)
+	protected.Put("/programs/orders/:orderId/fulfillment", sellerProg.UpdateOrderFulfillment)
+
+	// Uploads (auth required)
+	protected.Post("/uploads/presign", uploads.PresignUpload)
+	protected.Post("/uploads/:id/complete", uploads.CompleteUpload)
+
+	// ── Admin routes (auth + admin role required) ──
+	adminGroup := api.Group("/admin", middleware.RequireAuth(), middleware.RequireAdmin())
+	adminGroup.Get("/stats", admin.GetStats)
+	adminGroup.Get("/users", admin.ListUsers)
+	adminGroup.Get("/orders", admin.ListOrders)
+	adminGroup.Get("/programs", admin.ListSellerPrograms)
+	adminGroup.Put("/programs/:id", admin.UpdateSellerProgram)
+	adminGroup.Post("/payouts/process", admin.ProcessPayouts)
+
+	// Billboards (admin CRUD)
+	adminGroup.Get("/billboards", billboard.ListBillboards)
+	adminGroup.Get("/billboards/:id", billboard.GetBillboard)
+	adminGroup.Post("/billboards", billboard.CreateBillboard)
+	adminGroup.Put("/billboards/:id", billboard.UpdateBillboard)
+	adminGroup.Delete("/billboards/:id", billboard.DeleteBillboard)
 
 	// ── Graceful shutdown ──
 	quit := make(chan os.Signal, 1)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 
+	"greggie/backend/internal/email"
 	"greggie/backend/internal/payments"
 	"greggie/backend/internal/store"
 
@@ -67,6 +68,30 @@ func (h *WebhookHandler) handlePaymentSuccess(raw json.RawMessage) {
 	if err := h.Store.UpdateOrderStatus(order.ID, "confirmed"); err != nil {
 		log.Printf("webhook: failed to confirm order %s: %v", order.ID, err)
 	}
+	if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
+		log.Printf("webhook: failed to create seller artifacts for order %s: %v", order.ID, err)
+	}
+
+	// Send order confirmation email
+	go func() {
+		recipientEmail := order.Email
+		if recipientEmail == "" {
+			if user, err := h.Store.GetUserByID(order.UserID); err == nil {
+				recipientEmail = user.Email
+			}
+		}
+		if recipientEmail != "" {
+			itemCount := len(order.Items)
+			if itemCount == 0 {
+				itemCount = 1
+			}
+			body := email.OrderConfirmationEmail(order.ID, order.TotalCents, itemCount)
+			if err := email.Send(recipientEmail, "Order Confirmed — Greggie", body); err != nil {
+				log.Printf("webhook: failed to send confirmation email for order %s: %v", order.ID, err)
+			}
+		}
+	}()
+
 	log.Printf("webhook: order %s confirmed (payment %s)", order.ID, pi.ID)
 }
 

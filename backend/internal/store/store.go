@@ -518,6 +518,7 @@ func (s *Store) GetProductByID(id string) (*models.Product, error) {
 	var winnerID, bidderID sql.NullString
 	err := s.PG.QueryRow(
 		`SELECT id, COALESCE(channel_id::text,''), name, COALESCE(description,''), COALESCE(image_url,''), price_cents,
+		        COALESCE(tax_code, 'txcd_99999999'),
 		        original_price_cents, inventory, sale_type, is_pinned,
 		        auction_end_at, drop_at,
 		        COALESCE(auction_status, 'pending'), COALESCE(auction_reserve_cents, 0),
@@ -525,6 +526,7 @@ func (s *Store) GetProductByID(id string) (*models.Product, error) {
 		        COALESCE(bid_count, 0), created_at
 		 FROM products WHERE id = $1`, id,
 	).Scan(&p.ID, &p.ChannelID, &p.Name, &p.Description, &p.ImageURL, &p.PriceCents,
+		&p.TaxCode,
 		&origPrice, &p.Inventory, &p.SaleType, &p.IsPinned,
 		&auctionEnd, &dropAt,
 		&p.AuctionStatus, &p.AuctionReserveCents,
@@ -911,7 +913,7 @@ func (s *Store) CheckoutAtomic(o *models.Order) error {
 	// Create order
 	err = tx.QueryRow(
 		`INSERT INTO orders (user_id, channel_id, seller_id, status, total_cents, platform_fee_cents, stripe_payment_id, stripe_client_secret, idempotency_key)
-		 VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, NULLIF($9, '')) RETURNING id, created_at`,
+		 VALUES ($1, $2, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, NULLIF($9, '')) RETURNING id, created_at`,
 		o.UserID, o.ChannelID, o.SellerID, o.Status, o.TotalCents, o.PlatformFeeCents,
 		o.StripePaymentID, o.StripeClientSecret, o.IdempotencyKey,
 	).Scan(&o.ID, &o.CreatedAt)
@@ -922,6 +924,61 @@ func (s *Store) CheckoutAtomic(o *models.Order) error {
 	// Create order items
 	for i := range o.Items {
 		item := &o.Items[i]
+		item.OrderID = o.ID
+		err = tx.QueryRow(
+			`INSERT INTO order_items (order_id, product_id, quantity, price_cents)
+			 VALUES ($1, $2, $3, $4) RETURNING id`,
+			item.OrderID, item.ProductID, item.Quantity, item.PriceCents,
+		).Scan(&item.ID)
+		if err != nil {
+			return fmt.Errorf("create order item: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// DecrementInventory is a small compatibility wrapper retained for legacy tests.
+func (s *Store) DecrementInventory(productID string, quantity int) error {
+	result, err := s.PG.Exec(
+		`UPDATE products
+		 SET inventory = inventory - $1
+		 WHERE id = $2 AND inventory >= $1`,
+		quantity, productID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("insufficient inventory for product %s", productID)
+	}
+	return nil
+}
+
+// CreateOrder is retained for legacy tests that don't exercise CheckoutAtomic.
+func (s *Store) CreateOrder(o *models.Order) error {
+	tx, err := s.PG.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	err = tx.QueryRow(
+		`INSERT INTO orders (user_id, channel_id, seller_id, status, total_cents, platform_fee_cents, stripe_payment_id, stripe_client_secret, idempotency_key)
+		 VALUES ($1, $2, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, NULLIF($9, '')) RETURNING id, created_at`,
+		o.UserID, o.ChannelID, o.SellerID, o.Status, o.TotalCents, o.PlatformFeeCents,
+		o.StripePaymentID, o.StripeClientSecret, o.IdempotencyKey,
+	).Scan(&o.ID, &o.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("create order: %w", err)
+	}
+
+	for index := range o.Items {
+		item := &o.Items[index]
 		item.OrderID = o.ID
 		err = tx.QueryRow(
 			`INSERT INTO order_items (order_id, product_id, quantity, price_cents)
@@ -1343,6 +1400,134 @@ func (s *Store) GetOrderByStripePaymentID(paymentID string) (*models.Order, erro
 		return nil, err
 	}
 	return o, nil
+}
+
+func (s *Store) SellerOwnsOrder(userID, orderID string) (bool, error) {
+	var allowed bool
+	err := s.PG.QueryRow(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM orders o
+			LEFT JOIN channels c ON c.id = o.channel_id
+			LEFT JOIN order_items oi ON oi.order_id = o.id
+			LEFT JOIN products p ON p.id = oi.product_id
+			LEFT JOIN shops sh ON sh.id = p.shop_id
+			WHERE o.id = $1
+			  AND (c.creator_id = $2::uuid OR sh.owner_id = $2::uuid)
+		)`,
+		orderID, userID,
+	).Scan(&allowed)
+	if err != nil {
+		return false, err
+	}
+	return allowed, nil
+}
+
+type sellerOrderAllocation struct {
+	SellerID    string
+	ProgramType string
+	GrossCents  int64
+	UnitsSold   int
+}
+
+func (s *Store) EnsureSellerArtifactsForOrder(orderID string) error {
+	var createdAt time.Time
+	err := s.PG.QueryRow(`SELECT created_at FROM orders WHERE id = $1`, orderID).Scan(&createdAt)
+	if err != nil {
+		return err
+	}
+
+	rows, err := s.PG.Query(
+		`SELECT seller_id, program_type, gross_cents, units_sold
+		 FROM (
+		 	SELECT COALESCE(sh.owner_id::text, c.creator_id::text) AS seller_id,
+		 	       CASE WHEN p.shop_id IS NOT NULL THEN 'msp' ELSE 'csp' END AS program_type,
+		 	       SUM(oi.price_cents * oi.quantity)::bigint AS gross_cents,
+		 	       SUM(oi.quantity)::int AS units_sold
+		 	FROM order_items oi
+		 	JOIN products p ON p.id = oi.product_id
+		 	LEFT JOIN shops sh ON sh.id = p.shop_id
+		 	LEFT JOIN channels c ON c.id = p.channel_id
+		 	WHERE oi.order_id = $1
+		 	GROUP BY COALESCE(sh.owner_id::text, c.creator_id::text), CASE WHEN p.shop_id IS NOT NULL THEN 'msp' ELSE 'csp' END
+		 ) allocations
+		 WHERE seller_id <> ''`,
+		orderID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	analyticsDate := createdAt.Format("2006-01-02")
+	for rows.Next() {
+		var allocation sellerOrderAllocation
+		if err := rows.Scan(&allocation.SellerID, &allocation.ProgramType, &allocation.GrossCents, &allocation.UnitsSold); err != nil {
+			return err
+		}
+
+		sp, err := s.GetSellerProgram(allocation.SellerID, allocation.ProgramType)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return err
+		}
+		if sp.Status == "rejected" || sp.Status == "closed" {
+			continue
+		}
+
+		var payoutExists bool
+		if err := s.PG.QueryRow(
+			`SELECT EXISTS(
+				SELECT 1 FROM payouts WHERE user_id = $1 AND program_type = $2 AND order_id = $3
+			)`,
+			allocation.SellerID, allocation.ProgramType, orderID,
+		).Scan(&payoutExists); err != nil {
+			return err
+		}
+		if payoutExists {
+			continue
+		}
+
+		commissionPct := 15.0
+		if cr, err := s.GetCommissionRule(allocation.ProgramType, sp.Tier); err == nil && cr != nil {
+			commissionPct = cr.CommissionPct
+		}
+
+		commissionCents := int64((float64(allocation.GrossCents) * commissionPct / 100.0) + 0.5)
+		netCents := allocation.GrossCents - commissionCents
+		if netCents < 0 {
+			netCents = 0
+		}
+
+		if err := s.CreatePayout(&models.Payout{
+			UserID:          allocation.SellerID,
+			ProgramType:     allocation.ProgramType,
+			OrderID:         orderID,
+			GrossCents:      allocation.GrossCents,
+			CommissionCents: commissionCents,
+			NetCents:        netCents,
+			PayoutStatus:    "pending",
+		}); err != nil {
+			return err
+		}
+
+		if _, err := s.PG.Exec(
+			`INSERT INTO seller_analytics_daily (user_id, program_type, date, revenue_cents, orders_count, units_sold, views, conversion_rate)
+			 VALUES ($1, $2, $3::date, $4, 1, $5, 0, 0)
+			 ON CONFLICT (user_id, program_type, date)
+			 DO UPDATE SET
+			   revenue_cents = seller_analytics_daily.revenue_cents + EXCLUDED.revenue_cents,
+			   orders_count = seller_analytics_daily.orders_count + EXCLUDED.orders_count,
+			   units_sold = seller_analytics_daily.units_sold + EXCLUDED.units_sold`,
+			allocation.SellerID, allocation.ProgramType, analyticsDate, allocation.GrossCents, allocation.UnitsSold,
+		); err != nil {
+			return err
+		}
+	}
+
+	return rows.Err()
 }
 
 func (s *Store) UpdateOrderStatus(orderID, status string) error {
@@ -1887,6 +2072,9 @@ func (s *Store) GetMarketplaceGateway() (*models.MarketplaceGateway, error) {
 	// 7. Trending (reuse existing)
 	gw.Trending, _ = s.GetTrendingProducts(10)
 
+	// 8. Active billboards
+	gw.Billboards, _ = s.GetActiveBillboards(5)
+
 	return gw, nil
 }
 
@@ -2148,6 +2336,14 @@ func nilIfEmpty(s string) interface{} {
 	return s
 }
 
+type stringArrayScanner interface {
+	Scan(src interface{}) error
+}
+
+func pqStringArray(dest *[]string) stringArrayScanner {
+	return pq.Array(dest)
+}
+
 func envInt(key string, defaultVal int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -2165,4 +2361,1042 @@ func nilIfZeroInt64(v *int64) interface{} {
 		return nil
 	}
 	return *v
+}
+
+// ── Seller Programs ──
+
+func (s *Store) CreateSellerProgram(sp *models.SellerProgram) error {
+	return s.PG.QueryRow(
+		`INSERT INTO seller_programs (user_id, program_type, status, tier, agreed_at, agreement_version, application_note)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, created_at, updated_at`,
+		sp.UserID, sp.ProgramType, sp.Status, sp.Tier, sp.AgreedAt, sp.AgreementVersion, sp.ApplicationNote,
+	).Scan(&sp.ID, &sp.CreatedAt, &sp.UpdatedAt)
+}
+
+func (s *Store) GetSellerProgram(userID, programType string) (*models.SellerProgram, error) {
+	sp := &models.SellerProgram{}
+	err := s.PG.QueryRow(
+		`SELECT id, user_id, program_type, status, tier,
+		        agreed_at, agreement_version, COALESCE(application_note,''), COALESCE(rejection_reason,''),
+		        approved_at, activated_at, suspended_at, created_at, updated_at
+		 FROM seller_programs WHERE user_id = $1 AND program_type = $2`, userID, programType,
+	).Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+		&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
+		&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt, &sp.CreatedAt, &sp.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return sp, nil
+}
+
+func (s *Store) GetSellerPrograms(userID string) ([]models.SellerProgram, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, user_id, program_type, status, tier,
+		        agreed_at, agreement_version, COALESCE(application_note,''), COALESCE(rejection_reason,''),
+		        approved_at, activated_at, suspended_at, created_at, updated_at
+		 FROM seller_programs WHERE user_id = $1 ORDER BY created_at`, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var programs []models.SellerProgram
+	for rows.Next() {
+		var sp models.SellerProgram
+		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+			&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
+			&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt, &sp.CreatedAt, &sp.UpdatedAt); err != nil {
+			return nil, err
+		}
+		programs = append(programs, sp)
+	}
+	return programs, nil
+}
+
+func (s *Store) UpdateSellerProgramStatus(id, status string) error {
+	var tsCol string
+	switch status {
+	case "approved":
+		tsCol = "approved_at"
+	case "active":
+		tsCol = "activated_at"
+	case "suspended":
+		tsCol = "suspended_at"
+	}
+	if tsCol != "" {
+		_, err := s.PG.Exec(
+			fmt.Sprintf(`UPDATE seller_programs SET status = $1, %s = NOW() WHERE id = $2`, tsCol),
+			status, id,
+		)
+		return err
+	}
+	_, err := s.PG.Exec(`UPDATE seller_programs SET status = $1 WHERE id = $2`, status, id)
+	return err
+}
+
+func (s *Store) GetCommissionRule(programType, tier string) (*models.CommissionRule, error) {
+	cr := &models.CommissionRule{}
+	err := s.PG.QueryRow(
+		`SELECT id, program_type, tier, commission_pct, listing_fee_cents, is_active
+		 FROM commission_rules WHERE program_type = $1 AND tier = $2 AND is_active = TRUE`,
+		programType, tier,
+	).Scan(&cr.ID, &cr.ProgramType, &cr.Tier, &cr.CommissionPct, &cr.ListingFeeCents, &cr.IsActive)
+	if err != nil {
+		return nil, err
+	}
+	return cr, nil
+}
+
+func (s *Store) CreatePayout(p *models.Payout) error {
+	return s.PG.QueryRow(
+		`INSERT INTO payouts (user_id, program_type, order_id, gross_cents, commission_cents, net_cents, payout_status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (user_id, program_type, order_id) DO UPDATE SET
+		   gross_cents = EXCLUDED.gross_cents,
+		   commission_cents = EXCLUDED.commission_cents,
+		   net_cents = EXCLUDED.net_cents,
+		   payout_status = EXCLUDED.payout_status
+		 RETURNING id, created_at`,
+		p.UserID, p.ProgramType, p.OrderID, p.GrossCents, p.CommissionCents, p.NetCents, p.PayoutStatus,
+	).Scan(&p.ID, &p.CreatedAt)
+}
+
+func (s *Store) GetPayouts(userID, programType string, limit, offset int) ([]models.Payout, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.PG.Query(
+		`SELECT id, user_id, program_type, order_id, gross_cents, commission_cents, net_cents,
+		        payout_status, COALESCE(stripe_transfer_id,''), paid_at, created_at
+		 FROM payouts WHERE user_id = $1 AND program_type = $2
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		userID, programType, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var payouts []models.Payout
+	for rows.Next() {
+		var p models.Payout
+		if err := rows.Scan(&p.ID, &p.UserID, &p.ProgramType, &p.OrderID,
+			&p.GrossCents, &p.CommissionCents, &p.NetCents,
+			&p.PayoutStatus, &p.StripeTransferID, &p.PaidAt, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		payouts = append(payouts, p)
+	}
+	return payouts, nil
+}
+
+func (s *Store) GetPayoutSummary(userID, programType string) (pendingCents, paidCents int64, err error) {
+	err = s.PG.QueryRow(
+		`SELECT COALESCE(SUM(CASE WHEN payout_status = 'pending' THEN net_cents ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN payout_status = 'paid' THEN net_cents ELSE 0 END), 0)
+		 FROM payouts WHERE user_id = $1 AND program_type = $2`,
+		userID, programType,
+	).Scan(&pendingCents, &paidCents)
+	return
+}
+
+func (s *Store) GetCSPDashboardData(userID string) (*models.SellerDashboard, error) {
+	sp, err := s.GetSellerProgram(userID, "csp")
+	if err != nil {
+		return nil, err
+	}
+	cr, _ := s.GetCommissionRule("csp", sp.Tier)
+	commPct := 20.0
+	if cr != nil {
+		commPct = cr.CommissionPct
+	}
+	pending, paid, _ := s.GetPayoutSummary(userID, "csp")
+
+	var totalRevenue int64
+	var totalOrders int
+	s.PG.QueryRow(
+		`SELECT COALESCE(SUM(o.total_cents), 0), COUNT(o.id)
+		 FROM orders o
+		 JOIN channels c ON c.id = o.channel_id
+		 WHERE c.creator_id = $1 AND o.status != 'cancelled'`, userID,
+	).Scan(&totalRevenue, &totalOrders)
+
+	var totalViewers int64
+	s.PG.QueryRow(
+		`SELECT COALESCE(SUM(viewer_count), 0) FROM channels WHERE creator_id = $1`, userID,
+	).Scan(&totalViewers)
+
+	return &models.SellerDashboard{
+		Program:           *sp,
+		TotalRevenueCents: totalRevenue,
+		TotalOrders:       totalOrders,
+		PendingPayouts:    pending,
+		PaidPayouts:       paid,
+		CommissionPct:     commPct,
+		CurrentTier:       sp.Tier,
+		TotalViewers:      totalViewers,
+	}, nil
+}
+
+func (s *Store) GetMSPDashboardData(userID string) (*models.SellerDashboard, error) {
+	sp, err := s.GetSellerProgram(userID, "msp")
+	if err != nil {
+		return nil, err
+	}
+	cr, _ := s.GetCommissionRule("msp", sp.Tier)
+	commPct := 15.0
+	if cr != nil {
+		commPct = cr.CommissionPct
+	}
+	pending, paid, _ := s.GetPayoutSummary(userID, "msp")
+
+	// Get shop for this user
+	shop, err := s.GetShopByOwner(userID)
+	if err != nil {
+		return &models.SellerDashboard{
+			Program:        *sp,
+			CommissionPct:  commPct,
+			CurrentTier:    sp.Tier,
+			PendingPayouts: pending,
+			PaidPayouts:    paid,
+		}, nil
+	}
+
+	var totalRevenue int64
+	var totalOrders int
+	s.PG.QueryRow(
+		`SELECT COALESCE(SUM(oi.price_cents * oi.quantity), 0), COUNT(DISTINCT o.id)
+		 FROM orders o
+		 JOIN order_items oi ON oi.order_id = o.id
+		 JOIN products p ON p.id = oi.product_id
+		 WHERE p.shop_id = $1 AND o.status != 'cancelled'`, shop.ID,
+	).Scan(&totalRevenue, &totalOrders)
+
+	var activeListings int
+	s.PG.QueryRow(
+		`SELECT COUNT(*) FROM products WHERE shop_id = $1 AND listing_status = 'active'`, shop.ID,
+	).Scan(&activeListings)
+
+	var pendingOrders, shippedOrders int
+	s.PG.QueryRow(
+		`SELECT
+		   COUNT(DISTINCT CASE WHEN o.status = 'pending' THEN o.id END),
+		   COUNT(DISTINCT CASE WHEN o.status = 'shipped' THEN o.id END)
+		 FROM orders o
+		 JOIN order_items oi ON oi.order_id = o.id
+		 JOIN products p ON p.id = oi.product_id
+		 WHERE p.shop_id = $1`, shop.ID,
+	).Scan(&pendingOrders, &shippedOrders)
+
+	return &models.SellerDashboard{
+		Program:           *sp,
+		TotalRevenueCents: totalRevenue,
+		TotalOrders:       totalOrders,
+		PendingPayouts:    pending,
+		PaidPayouts:       paid,
+		CommissionPct:     commPct,
+		CurrentTier:       sp.Tier,
+		ActiveListings:    activeListings,
+		PendingOrders:     pendingOrders,
+		ShippedOrders:     shippedOrders,
+	}, nil
+}
+
+func (s *Store) GetSellerOrders(userID, programType, statusFilter string, limit, offset int) ([]models.SellerOrderView, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var query string
+	var args []interface{}
+
+	if programType == "csp" {
+		query = `SELECT o.id, COALESCE(o.user_id::text,''), COALESCE(o.channel_id::text,''),
+		                COALESCE(o.seller_id::text,''), o.status, o.total_cents,
+		                COALESCE(o.subtotal_cents, 0), COALESCE(o.shipping_cents, 0), COALESCE(o.tax_cents, 0),
+		                COALESCE(o.shipping_address_id::text,''), COALESCE(o.shipping_method, ''), COALESCE(o.email, ''),
+		                o.created_at, COALESCE(o.email, u.email, '') as buyer_email
+		         FROM orders o
+		         JOIN channels c ON c.id = o.channel_id
+		         LEFT JOIN users u ON u.id = o.user_id
+		         WHERE c.creator_id = $1`
+		args = append(args, userID)
+	} else {
+		query = `SELECT DISTINCT o.id, COALESCE(o.user_id::text,''), COALESCE(o.channel_id::text,''),
+		                COALESCE(o.seller_id::text,''), o.status, o.total_cents,
+		                COALESCE(o.subtotal_cents, 0), COALESCE(o.shipping_cents, 0), COALESCE(o.tax_cents, 0),
+		                COALESCE(o.shipping_address_id::text,''), COALESCE(o.shipping_method, ''), COALESCE(o.email, ''),
+		                o.created_at, COALESCE(o.email, u.email, '') as buyer_email
+		         FROM orders o
+		         JOIN order_items oi ON oi.order_id = o.id
+		         JOIN products p ON p.id = oi.product_id
+		         JOIN shops sh ON sh.id = p.shop_id
+		         LEFT JOIN users u ON u.id = o.user_id
+		         WHERE sh.owner_id = $1`
+		args = append(args, userID)
+	}
+
+	if statusFilter != "" {
+		args = append(args, statusFilter)
+		query += fmt.Sprintf(` AND o.status = $%d`, len(args))
+	}
+
+	args = append(args, limit, offset)
+	query += fmt.Sprintf(` ORDER BY o.created_at DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
+
+	rows, err := s.PG.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []models.SellerOrderView
+	for rows.Next() {
+		var ov models.SellerOrderView
+		if err := rows.Scan(
+			&ov.ID,
+			&ov.UserID,
+			&ov.ChannelID,
+			&ov.SellerID,
+			&ov.Status,
+			&ov.TotalCents,
+			&ov.SubtotalCents,
+			&ov.ShippingCents,
+			&ov.TaxCents,
+			&ov.ShippingAddressID,
+			&ov.ShippingMethod,
+			&ov.Email,
+			&ov.CreatedAt,
+			&ov.BuyerEmail,
+		); err != nil {
+			return nil, err
+		}
+		// Load order items
+		itemRows, err := s.PG.Query(
+			`SELECT id, order_id, product_id, quantity, price_cents FROM order_items WHERE order_id = $1`, ov.ID)
+		if err == nil {
+			for itemRows.Next() {
+				var item models.OrderItem
+				itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.Quantity, &item.PriceCents)
+				ov.Items = append(ov.Items, item)
+			}
+			itemRows.Close()
+		}
+		// Load seller-scoped fulfillment so multi-seller orders remain isolated per seller.
+		fr, err := s.GetFulfillmentByOrderAndSeller(ov.ID, userID)
+		if err == nil {
+			ov.Fulfillment = fr
+		}
+		// Load shipping address
+		if ov.ShippingAddressID != "" {
+			var sa models.ShippingAddress
+			err := s.PG.QueryRow(
+				`SELECT id, user_id, full_name, address_line1, COALESCE(address_line2,''),
+				        city, state, zip_code, country, COALESCE(phone,''), is_default, created_at
+				 FROM shipping_addresses WHERE id = $1`, ov.ShippingAddressID,
+			).Scan(&sa.ID, &sa.UserID, &sa.FullName, &sa.AddressLine1, &sa.AddressLine2,
+				&sa.City, &sa.State, &sa.ZipCode, &sa.Country, &sa.Phone, &sa.IsDefault, &sa.CreatedAt)
+			if err == nil {
+				ov.ShippingAddress = &sa
+			}
+		}
+		orders = append(orders, ov)
+	}
+	return orders, nil
+}
+
+func (s *Store) CreateFulfillmentRecord(fr *models.FulfillmentRecord) error {
+	return s.PG.QueryRow(
+		`INSERT INTO fulfillment_records (order_id, seller_id, fulfillment_type, tracking_number, carrier, status)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id, created_at, updated_at`,
+		fr.OrderID, fr.SellerID, fr.FulfillmentType, fr.TrackingNumber, fr.Carrier, fr.Status,
+	).Scan(&fr.ID, &fr.CreatedAt, &fr.UpdatedAt)
+}
+
+func (s *Store) GetFulfillmentByOrderAndSeller(orderID, sellerID string) (*models.FulfillmentRecord, error) {
+	fr := &models.FulfillmentRecord{}
+	err := s.PG.QueryRow(
+		`SELECT id, order_id, seller_id, fulfillment_type,
+		        COALESCE(tracking_number,''), COALESCE(carrier,''),
+		        shipped_at, delivered_at, status, created_at, updated_at
+		 FROM fulfillment_records
+		 WHERE order_id = $1 AND seller_id = $2`,
+		orderID, sellerID,
+	).Scan(&fr.ID, &fr.OrderID, &fr.SellerID, &fr.FulfillmentType,
+		&fr.TrackingNumber, &fr.Carrier,
+		&fr.ShippedAt, &fr.DeliveredAt, &fr.Status, &fr.CreatedAt, &fr.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return fr, nil
+}
+
+func (s *Store) UpdateFulfillmentRecord(id string, req *models.UpdateFulfillmentRequest) error {
+	var setClauses []string
+	var args []interface{}
+	argIdx := 1
+
+	if req.TrackingNumber != nil {
+		setClauses = append(setClauses, fmt.Sprintf("tracking_number = $%d", argIdx))
+		args = append(args, *req.TrackingNumber)
+		argIdx++
+	}
+	if req.Carrier != nil {
+		setClauses = append(setClauses, fmt.Sprintf("carrier = $%d", argIdx))
+		args = append(args, *req.Carrier)
+		argIdx++
+	}
+	if req.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argIdx))
+		args = append(args, *req.Status)
+		argIdx++
+		if *req.Status == "shipped" {
+			setClauses = append(setClauses, "shipped_at = NOW()")
+		} else if *req.Status == "delivered" {
+			setClauses = append(setClauses, "delivered_at = NOW()")
+		}
+	}
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE fulfillment_records SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argIdx)
+	_, err := s.PG.Exec(query, args...)
+	return err
+}
+
+func (s *Store) SyncOrderStatusFromFulfillment(orderID string) error {
+	var total int
+	var delivered int
+	var shippedLike int
+	var processingLike int
+	err := s.PG.QueryRow(
+		`SELECT COUNT(*),
+		        COUNT(*) FILTER (WHERE status = 'delivered'),
+		        COUNT(*) FILTER (WHERE status IN ('shipped', 'in_transit', 'delivered')),
+		        COUNT(*) FILTER (WHERE status IN ('processing', 'shipped', 'in_transit', 'delivered'))
+		 FROM fulfillment_records
+		 WHERE order_id = $1`,
+		orderID,
+	).Scan(&total, &delivered, &shippedLike, &processingLike)
+	if err != nil {
+		return err
+	}
+	if total == 0 {
+		return nil
+	}
+
+	nextStatus := "pending"
+	switch {
+	case delivered == total:
+		nextStatus = "delivered"
+	case shippedLike > 0:
+		nextStatus = "shipped"
+	case processingLike > 0:
+		nextStatus = "processing"
+	default:
+		nextStatus = "pending"
+	}
+
+	return s.UpdateOrderStatus(orderID, nextStatus)
+}
+
+func (s *Store) GetSellerAnalytics(userID, programType string, from, to string) ([]models.SellerAnalyticsDay, error) {
+	rows, err := s.PG.Query(
+		`SELECT date, revenue_cents, orders_count, units_sold, views, conversion_rate
+		 FROM seller_analytics_daily
+		 WHERE user_id = $1 AND program_type = $2 AND date >= $3::date AND date <= $4::date
+		 ORDER BY date`, userID, programType, from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var days []models.SellerAnalyticsDay
+	for rows.Next() {
+		var d models.SellerAnalyticsDay
+		if err := rows.Scan(&d.Date, &d.RevenueCents, &d.OrdersCount, &d.UnitsSold, &d.Views, &d.ConversionRate); err != nil {
+			return nil, err
+		}
+		days = append(days, d)
+	}
+	return days, nil
+}
+
+// ── M10: Payout Transfers ─────────────────────────────────────
+
+// GetPendingPayoutsWithAccounts returns pending payouts joined with seller Stripe account info.
+func (s *Store) GetPendingPayoutsWithAccounts(limit int) ([]models.PayoutWithAccount, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.PG.Query(
+		`SELECT p.id, p.user_id, p.program_type, p.order_id, p.net_cents,
+		        u.stripe_account_id, u.email
+		 FROM payouts p
+		 JOIN users u ON u.id::text = p.user_id
+		 WHERE p.payout_status = 'pending'
+		   AND u.stripe_account_id <> ''
+		   AND u.stripe_onboarding_complete = true
+		 ORDER BY p.created_at ASC
+		 LIMIT $1`, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []models.PayoutWithAccount
+	for rows.Next() {
+		var r models.PayoutWithAccount
+		if err := rows.Scan(&r.PayoutID, &r.UserID, &r.ProgramType, &r.OrderID, &r.NetCents,
+			&r.StripeAccountID, &r.Email); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
+// MarkPayoutPaid sets a payout as paid with the Stripe transfer ID.
+func (s *Store) MarkPayoutPaid(payoutID, transferID string) error {
+	_, err := s.PG.Exec(
+		`UPDATE payouts SET payout_status = 'paid', stripe_transfer_id = $1, paid_at = NOW()
+		 WHERE id = $2`,
+		transferID, payoutID,
+	)
+	return err
+}
+
+// MarkPayoutFailed sets a payout status to 'failed'.
+func (s *Store) MarkPayoutFailed(payoutID string) error {
+	_, err := s.PG.Exec(
+		`UPDATE payouts SET payout_status = 'failed' WHERE id = $1`, payoutID,
+	)
+	return err
+}
+
+// ── M11: Password Reset ───────────────────────────────────────
+
+// CreatePasswordResetToken inserts a reset token for a user (deletes any existing first).
+func (s *Store) CreatePasswordResetToken(userID, tokenHash string, expiresAt time.Time) error {
+	_, err := s.PG.Exec(
+		`DELETE FROM password_reset_tokens WHERE user_id = $1::uuid`, userID,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = s.PG.Exec(
+		`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		 VALUES ($1::uuid, $2, $3)`,
+		userID, tokenHash, expiresAt,
+	)
+	return err
+}
+
+// GetPasswordResetToken validates a token hash and returns the user ID if valid.
+func (s *Store) GetPasswordResetToken(tokenHash string) (string, error) {
+	var userID string
+	err := s.PG.QueryRow(
+		`SELECT user_id FROM password_reset_tokens
+		 WHERE token_hash = $1 AND expires_at > NOW() AND used = false`,
+		tokenHash,
+	).Scan(&userID)
+	return userID, err
+}
+
+// UsePasswordResetToken marks a token as used.
+func (s *Store) UsePasswordResetToken(tokenHash string) error {
+	_, err := s.PG.Exec(
+		`UPDATE password_reset_tokens SET used = true WHERE token_hash = $1`, tokenHash,
+	)
+	return err
+}
+
+// UpdateUserPassword updates a user's password hash.
+func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
+	_, err := s.PG.Exec(
+		`UPDATE users SET password_hash = $1 WHERE id = $2::uuid`, passwordHash, userID,
+	)
+	return err
+}
+
+// ── M12: Upload Tracking ──────────────────────────────────────
+
+// CreateUpload records a new upload entry.
+func (s *Store) CreateUpload(u *models.Upload) error {
+	return s.PG.QueryRow(
+		`INSERT INTO uploads (user_id, entity_type, entity_id, filename, content_type, size_bytes, storage_key, url, status)
+		 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING id, created_at`,
+		u.UserID, u.EntityType, u.EntityID, u.Filename, u.ContentType, u.SizeBytes, u.StorageKey, u.URL, u.Status,
+	).Scan(&u.ID, &u.CreatedAt)
+}
+
+// CompleteUpload marks an upload as completed and sets its public URL.
+func (s *Store) CompleteUpload(uploadID, url string) error {
+	_, err := s.PG.Exec(
+		`UPDATE uploads SET status = 'completed', url = $1 WHERE id = $2::uuid`,
+		url, uploadID,
+	)
+	return err
+}
+
+// GetUpload retrieves an upload by ID.
+func (s *Store) GetUpload(uploadID string) (*models.Upload, error) {
+	u := &models.Upload{}
+	err := s.PG.QueryRow(
+		`SELECT id, user_id, entity_type, entity_id, filename, content_type, size_bytes,
+		        storage_key, url, status, created_at
+		 FROM uploads WHERE id = $1::uuid`, uploadID,
+	).Scan(&u.ID, &u.UserID, &u.EntityType, &u.EntityID, &u.Filename, &u.ContentType,
+		&u.SizeBytes, &u.StorageKey, &u.URL, &u.Status, &u.CreatedAt)
+	return u, err
+}
+
+// ── M14: Admin Queries ────────────────────────────────────────
+
+// AdminListUsers returns paginated users with optional role filter.
+func (s *Store) AdminListUsers(role string, limit, offset int) ([]models.User, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	countQuery := `SELECT COUNT(*) FROM users`
+	dataQuery := `SELECT id, username, display_name, email, '' AS password_hash, avatar_url, role,
+	              onboarding_complete, preferred_categories,
+	              COALESCE(stripe_account_id,''), stripe_onboarding_complete,
+	              created_at, updated_at FROM users`
+
+	var args []interface{}
+	var where string
+	argIdx := 1
+	if role != "" {
+		where = fmt.Sprintf(` WHERE role = $%d`, argIdx)
+		args = append(args, role)
+		argIdx++
+	}
+
+	var total int
+	if err := s.PG.QueryRow(countQuery+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataQuery += where + fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.PG.Query(dataQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.AvatarURL,
+			&u.Role, &u.OnboardingComplete, pq.Array(&u.PreferredCategories),
+			&u.StripeAccountID, &u.StripeOnboardingComplete, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		u.PasswordHash = ""
+		users = append(users, u)
+	}
+	return users, total, nil
+}
+
+// AdminUpdateSellerProgram updates a seller program status (approve, reject, suspend).
+func (s *Store) AdminUpdateSellerProgram(programID, status, reason string) error {
+	query := `UPDATE seller_programs SET status = $1, updated_at = NOW()`
+	args := []interface{}{status}
+	argIdx := 2
+
+	switch status {
+	case "approved":
+		query += fmt.Sprintf(`, approved_at = NOW()`)
+	case "rejected":
+		query += fmt.Sprintf(`, rejection_reason = $%d`, argIdx)
+		args = append(args, reason)
+		argIdx++
+	case "active":
+		query += fmt.Sprintf(`, activated_at = NOW()`)
+	}
+
+	query += fmt.Sprintf(` WHERE id = $%d::uuid`, argIdx)
+	args = append(args, programID)
+
+	_, err := s.PG.Exec(query, args...)
+	return err
+}
+
+// AdminListSellerPrograms returns all seller programs with optional status filter.
+func (s *Store) AdminListSellerPrograms(status string, limit, offset int) ([]models.SellerProgram, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	countQuery := `SELECT COUNT(*) FROM seller_programs`
+	dataQuery := `SELECT id, user_id, program_type, status, tier, agreed_at, agreement_version,
+	              COALESCE(application_note,''), COALESCE(rejection_reason,''),
+	              approved_at, activated_at, created_at, updated_at
+	              FROM seller_programs`
+
+	var args []interface{}
+	var where string
+	argIdx := 1
+	if status != "" {
+		where = fmt.Sprintf(` WHERE status = $%d`, argIdx)
+		args = append(args, status)
+		argIdx++
+	}
+
+	var total int
+	if err := s.PG.QueryRow(countQuery+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataQuery += where + fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.PG.Query(dataQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var programs []models.SellerProgram
+	for rows.Next() {
+		var sp models.SellerProgram
+		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+			&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
+			&sp.ApprovedAt, &sp.ActivatedAt, &sp.CreatedAt, &sp.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		programs = append(programs, sp)
+	}
+	return programs, total, nil
+}
+
+// AdminListOrders returns paginated orders with optional status filter.
+func (s *Store) AdminListOrders(status string, limit, offset int) ([]models.Order, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	countQuery := `SELECT COUNT(*) FROM orders`
+	dataQuery := `SELECT id, COALESCE(user_id::text,''), COALESCE(channel_id::text,''),
+	              COALESCE(seller_id::text,''), status, total_cents,
+	              COALESCE(subtotal_cents,0), COALESCE(shipping_cents,0), COALESCE(tax_cents,0),
+	              COALESCE(shipping_address_id::text,''), COALESCE(shipping_method,''),
+	              COALESCE(email,''), COALESCE(platform_fee_cents,0),
+	              COALESCE(stripe_payment_id,''), COALESCE(stripe_client_secret,''),
+	              COALESCE(coupon_id::text,''), COALESCE(discount_cents,0),
+	              COALESCE(idempotency_key,''), created_at
+	              FROM orders`
+
+	var args []interface{}
+	var where string
+	argIdx := 1
+	if status != "" {
+		where = fmt.Sprintf(` WHERE status = $%d`, argIdx)
+		args = append(args, status)
+		argIdx++
+	}
+
+	var total int
+	if err := s.PG.QueryRow(countQuery+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataQuery += where + fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.PG.Query(dataQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var orders []models.Order
+	for rows.Next() {
+		var o models.Order
+		if err := rows.Scan(&o.ID, &o.UserID, &o.ChannelID, &o.SellerID, &o.Status, &o.TotalCents,
+			&o.SubtotalCents, &o.ShippingCents, &o.TaxCents,
+			&o.ShippingAddressID, &o.ShippingMethod, &o.Email, &o.PlatformFeeCents,
+			&o.StripePaymentID, &o.StripeClientSecret, &o.CouponID, &o.DiscountCents,
+			&o.IdempotencyKey, &o.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, total, nil
+}
+
+// AdminGetStats returns platform-wide dashboard stats.
+func (s *Store) AdminGetStats() (*models.AdminStats, error) {
+	stats := &models.AdminStats{}
+	s.PG.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&stats.TotalUsers)
+	s.PG.QueryRow(`SELECT COUNT(*) FROM orders`).Scan(&stats.TotalOrders)
+	s.PG.QueryRow(`SELECT COALESCE(SUM(total_cents),0) FROM orders WHERE status NOT IN ('cancelled','failed')`).Scan(&stats.TotalRevenueCents)
+	s.PG.QueryRow(`SELECT COUNT(*) FROM channels WHERE status = 'LIVE'`).Scan(&stats.LiveChannels)
+	s.PG.QueryRow(`SELECT COUNT(*) FROM seller_programs WHERE status = 'pending'`).Scan(&stats.PendingPrograms)
+	s.PG.QueryRow(`SELECT COUNT(*) FROM products WHERE listing_status = 'active' OR listing_status IS NULL`).Scan(&stats.ActiveProducts)
+	s.PG.QueryRow(`SELECT COALESCE(SUM(net_cents),0) FROM payouts WHERE payout_status = 'pending'`).Scan(&stats.PendingPayoutsCents)
+	return stats, nil
+}
+
+// ── Billboards ──
+
+func (s *Store) GetActiveBillboards(limit int) ([]models.Billboard, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	rows, err := s.PG.Query(
+		`SELECT id, billboard_type, target_type, COALESCE(target_id::text,''),
+		        COALESCE(sponsor_id::text,''), title, COALESCE(subtitle,''),
+		        COALESCE(description,''), image_url, COALESCE(cta_label,'Shop Now'),
+		        COALESCE(badge_text,''), COALESCE(badge_color,'indigo'),
+		        priority, starts_at, ends_at, status,
+		        impressions, clicks, budget_cents, spent_cents, cpm_cents,
+		        created_at, updated_at
+		 FROM billboards
+		 WHERE status = 'active'
+		   AND starts_at <= NOW()
+		   AND (ends_at IS NULL OR ends_at > NOW())
+		 ORDER BY
+		   CASE billboard_type
+		     WHEN 'sponsored' THEN 0
+		     WHEN 'promoted'  THEN 1
+		     WHEN 'trending'  THEN 2
+		     WHEN 'campaign'  THEN 3
+		   END ASC,
+		   priority DESC,
+		   created_at DESC
+		 LIMIT $1`, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bbs []models.Billboard
+	for rows.Next() {
+		var b models.Billboard
+		var endsAt sql.NullTime
+		if err := rows.Scan(
+			&b.ID, &b.BillboardType, &b.TargetType, &b.TargetID,
+			&b.SponsorID, &b.Title, &b.Subtitle,
+			&b.Description, &b.ImageURL, &b.CTALabel,
+			&b.BadgeText, &b.BadgeColor,
+			&b.Priority, &b.StartsAt, &endsAt, &b.Status,
+			&b.Impressions, &b.Clicks, &b.BudgetCents, &b.SpentCents, &b.CPMCents,
+			&b.CreatedAt, &b.UpdatedAt,
+		); err != nil {
+			return bbs, err
+		}
+		if endsAt.Valid {
+			b.EndsAt = &endsAt.Time
+		}
+		bbs = append(bbs, b)
+	}
+
+	// Hydrate target channel / product for each billboard
+	for i := range bbs {
+		switch bbs[i].TargetType {
+		case "channel":
+			if bbs[i].TargetID != "" {
+				ch, err := s.GetChannelByID(bbs[i].TargetID)
+				if err == nil {
+					bbs[i].TargetChannel = ch
+				}
+			}
+		case "product":
+			if bbs[i].TargetID != "" {
+				p, err := s.GetProductByID(bbs[i].TargetID)
+				if err == nil {
+					bbs[i].TargetProduct = p
+				}
+			}
+		}
+	}
+
+	return bbs, nil
+}
+
+func (s *Store) RecordBillboardEvent(billboardID, userID, eventType string) error {
+	var uid interface{} = nil
+	if userID != "" {
+		uid = userID
+	}
+	_, err := s.PG.Exec(
+		`INSERT INTO billboard_events (billboard_id, user_id, event_type) VALUES ($1, $2, $3)`,
+		billboardID, uid, eventType,
+	)
+	if err != nil {
+		return err
+	}
+
+	col := "impressions"
+	if eventType == "click" {
+		col = "clicks"
+	}
+	_, err = s.PG.Exec(
+		`UPDATE billboards SET `+col+` = `+col+` + 1 WHERE id = $1`,
+		billboardID,
+	)
+	return err
+}
+
+// ── Billboard Admin CRUD ──
+
+func (s *Store) ListBillboards(status string, limit, offset int) ([]models.Billboard, int, error) {
+	var total int
+	if status != "" {
+		err := s.PG.QueryRow(`SELECT COUNT(*) FROM billboards WHERE status = $1`, status).Scan(&total)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		err := s.PG.QueryRow(`SELECT COUNT(*) FROM billboards`).Scan(&total)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	var rows *sql.Rows
+	var err error
+	if status != "" {
+		rows, err = s.PG.Query(
+			`SELECT id, billboard_type, target_type, COALESCE(target_id::text,''),
+			        COALESCE(sponsor_id::text,''), title, COALESCE(subtitle,''),
+			        COALESCE(description,''), image_url, COALESCE(cta_label,'Shop Now'),
+			        COALESCE(badge_text,''), COALESCE(badge_color,'indigo'),
+			        priority, starts_at, ends_at, status,
+			        impressions, clicks, budget_cents, spent_cents, cpm_cents,
+			        created_at, updated_at
+			 FROM billboards
+			 WHERE status = $1
+			 ORDER BY created_at DESC
+			 LIMIT $2 OFFSET $3`, status, limit, offset,
+		)
+	} else {
+		rows, err = s.PG.Query(
+			`SELECT id, billboard_type, target_type, COALESCE(target_id::text,''),
+			        COALESCE(sponsor_id::text,''), title, COALESCE(subtitle,''),
+			        COALESCE(description,''), image_url, COALESCE(cta_label,'Shop Now'),
+			        COALESCE(badge_text,''), COALESCE(badge_color,'indigo'),
+			        priority, starts_at, ends_at, status,
+			        impressions, clicks, budget_cents, spent_cents, cpm_cents,
+			        created_at, updated_at
+			 FROM billboards
+			 ORDER BY created_at DESC
+			 LIMIT $1 OFFSET $2`, limit, offset,
+		)
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var bbs []models.Billboard
+	for rows.Next() {
+		var b models.Billboard
+		var endsAt sql.NullTime
+		if err := rows.Scan(
+			&b.ID, &b.BillboardType, &b.TargetType, &b.TargetID,
+			&b.SponsorID, &b.Title, &b.Subtitle,
+			&b.Description, &b.ImageURL, &b.CTALabel,
+			&b.BadgeText, &b.BadgeColor,
+			&b.Priority, &b.StartsAt, &endsAt, &b.Status,
+			&b.Impressions, &b.Clicks, &b.BudgetCents, &b.SpentCents, &b.CPMCents,
+			&b.CreatedAt, &b.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		if endsAt.Valid {
+			b.EndsAt = &endsAt.Time
+		}
+		bbs = append(bbs, b)
+	}
+
+	return bbs, total, nil
+}
+
+func (s *Store) GetBillboardByID(id string) (*models.Billboard, error) {
+	var b models.Billboard
+	var endsAt sql.NullTime
+	err := s.PG.QueryRow(
+		`SELECT id, billboard_type, target_type, COALESCE(target_id::text,''),
+		        COALESCE(sponsor_id::text,''), title, COALESCE(subtitle,''),
+		        COALESCE(description,''), image_url, COALESCE(cta_label,'Shop Now'),
+		        COALESCE(badge_text,''), COALESCE(badge_color,'indigo'),
+		        priority, starts_at, ends_at, status,
+		        impressions, clicks, budget_cents, spent_cents, cpm_cents,
+		        created_at, updated_at
+		 FROM billboards WHERE id = $1`, id,
+	).Scan(
+		&b.ID, &b.BillboardType, &b.TargetType, &b.TargetID,
+		&b.SponsorID, &b.Title, &b.Subtitle,
+		&b.Description, &b.ImageURL, &b.CTALabel,
+		&b.BadgeText, &b.BadgeColor,
+		&b.Priority, &b.StartsAt, &endsAt, &b.Status,
+		&b.Impressions, &b.Clicks, &b.BudgetCents, &b.SpentCents, &b.CPMCents,
+		&b.CreatedAt, &b.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if endsAt.Valid {
+		b.EndsAt = &endsAt.Time
+	}
+
+	// Hydrate target channel / product
+	switch b.TargetType {
+	case "channel":
+		if b.TargetID != "" {
+			ch, err := s.GetChannelByID(b.TargetID)
+			if err == nil {
+				b.TargetChannel = ch
+			}
+		}
+	case "product":
+		if b.TargetID != "" {
+			p, err := s.GetProductByID(b.TargetID)
+			if err == nil {
+				b.TargetProduct = p
+			}
+		}
+	}
+
+	return &b, nil
+}
+
+func (s *Store) CreateBillboard(b *models.Billboard) error {
+	return s.PG.QueryRow(
+		`INSERT INTO billboards (billboard_type, target_type, target_id, sponsor_id,
+		        title, subtitle, description, image_url, cta_label,
+		        badge_text, badge_color, priority, starts_at, ends_at,
+		        status, budget_cents, cpm_cents)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		 RETURNING id, created_at, updated_at`,
+		b.BillboardType, b.TargetType, b.TargetID, b.SponsorID,
+		b.Title, b.Subtitle, b.Description, b.ImageURL, b.CTALabel,
+		b.BadgeText, b.BadgeColor, b.Priority, b.StartsAt, b.EndsAt,
+		b.Status, b.BudgetCents, b.CPMCents,
+	).Scan(&b.ID, &b.CreatedAt, &b.UpdatedAt)
+}
+
+func (s *Store) UpdateBillboard(b *models.Billboard) error {
+	_, err := s.PG.Exec(
+		`UPDATE billboards SET billboard_type=$1, target_type=$2, target_id=$3,
+		        title=$4, subtitle=$5, description=$6, image_url=$7, cta_label=$8,
+		        badge_text=$9, badge_color=$10, priority=$11, starts_at=$12, ends_at=$13,
+		        status=$14, budget_cents=$15, cpm_cents=$16, updated_at=NOW()
+		 WHERE id=$17`,
+		b.BillboardType, b.TargetType, b.TargetID,
+		b.Title, b.Subtitle, b.Description, b.ImageURL, b.CTALabel,
+		b.BadgeText, b.BadgeColor, b.Priority, b.StartsAt, b.EndsAt,
+		b.Status, b.BudgetCents, b.CPMCents, b.ID,
+	)
+	return err
+}
+
+func (s *Store) DeleteBillboard(id string) error {
+	_, err := s.PG.Exec(`DELETE FROM billboards WHERE id = $1`, id)
+	return err
 }

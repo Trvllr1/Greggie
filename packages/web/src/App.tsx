@@ -8,6 +8,8 @@ import { BidModal } from './components/BidModal';
 import { SuccessModal } from './components/SuccessModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { CreatorStudio } from './components/CreatorStudio';
+import { MarketStudio } from './components/MarketStudio';
+import { AdminPanel } from './components/AdminPanel';
 import { OnboardingOverlay, shouldSkipOnboarding } from './components/OnboardingOverlay';
 import { AuthModal } from './components/AuthModal';
 import { MarketplaceBrowse } from './components/MarketplaceBrowse';
@@ -33,14 +35,18 @@ type SessionState =
   | 'PURCHASE_COMPLETE'
   | 'USER_PROFILE'
   | 'CREATOR_STUDIO'
+  | 'MARKET_STUDIO'
   | 'BROWSING_MARKETPLACE'
   | 'VIEWING_PRODUCT'
-  | 'MARKETPLACE_CHECKOUT';
+  | 'MARKETPLACE_CHECKOUT'
+  | 'ADMIN_PANEL';
 
 type SessionAction =
   | { type: 'ENTER_MALL' }
   | { type: 'ENTER_CREATOR' }
+  | { type: 'ENTER_MARKET_STUDIO' }
   | { type: 'ENTER_MARKETPLACE' }
+  | { type: 'ENTER_ADMIN' }
   | { type: 'ONBOARDING_COMPLETE' }
   | { type: 'OPEN_RAIL' }
   | { type: 'CLOSE_RAIL' }
@@ -61,8 +67,12 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
       return shouldSkipOnboarding() ? 'WATCHING_PC' : 'ONBOARDING';
     case 'ENTER_CREATOR':
       return 'CREATOR_STUDIO';
+    case 'ENTER_MARKET_STUDIO':
+      return 'MARKET_STUDIO';
     case 'ENTER_MARKETPLACE':
       return 'BROWSING_MARKETPLACE';
+    case 'ENTER_ADMIN':
+      return 'ADMIN_PANEL';
     case 'ONBOARDING_COMPLETE':
       return 'WATCHING_PC';
     case 'OPEN_RAIL':
@@ -156,6 +166,14 @@ export default function App() {
 
   const handleEnterCreator = () => {
     dispatch({ type: 'ENTER_CREATOR' });
+  };
+
+  const handleEnterMarketStudio = () => {
+    dispatch({ type: 'ENTER_MARKET_STUDIO' });
+  };
+
+  const handleEnterAdmin = () => {
+    dispatch({ type: 'ENTER_ADMIN' });
   };
 
   const handleOpenRail = () => {
@@ -297,10 +315,13 @@ export default function App() {
         dispatch({ type: 'ENTER_MALL' });
       })
       .catch(() => {
-        // If channel fetch fails, still try to switch
+        // Fallback: resolve from loaded channels or mock data
+        const fallback = channels.find(c => c.id === channelId)
+          ?? MOCK_CHANNELS.find(c => c.id === channelId);
+        if (fallback) setCurrentChannel(fallback);
         dispatch({ type: 'ENTER_MALL' });
       });
-  }, []);
+  }, [channels]);
 
 
 
@@ -308,12 +329,26 @@ export default function App() {
     <div className="relative h-screen w-full overflow-hidden bg-black font-sans selection:bg-indigo-500/30">
       <AnimatePresence mode="wait">
         {sessionState === 'ENTRY_LOBBY' && (
-          <Splash onEnter={handleEnterMall} onEnterCreator={handleEnterCreator} onEnterMarketplace={handleEnterMarketplace} />
+          <Splash
+            onEnter={handleEnterMall}
+            onEnterCreator={handleEnterCreator}
+            onEnterMarketplace={handleEnterMarketplace}
+            onEnterMarketStudio={handleEnterMarketStudio}
+            onEnterAdmin={(user?.role === 'admin' || import.meta.env.DEV) ? handleEnterAdmin : undefined}
+          />
         )}
       </AnimatePresence>
 
       {sessionState === 'CREATOR_STUDIO' && (
         <CreatorStudio onExit={() => dispatch({ type: 'EXIT_TO_LOBBY' })} />
+      )}
+
+      {sessionState === 'MARKET_STUDIO' && (
+        <MarketStudio onExit={() => dispatch({ type: 'EXIT_TO_LOBBY' })} />
+      )}
+
+      {sessionState === 'ADMIN_PANEL' && (
+        <AdminPanel onExit={() => dispatch({ type: 'EXIT_TO_LOBBY' })} />
       )}
 
       <AnimatePresence>
@@ -327,7 +362,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && (
+      {sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && sessionState !== 'MARKET_STUDIO' && sessionState !== 'ADMIN_PANEL' && (
         <>
           {usingMock && !loading && (
             <div className="fixed top-0 inset-x-0 z-40 bg-amber-500/90 text-black text-center text-xs py-1 font-medium backdrop-blur-sm">
@@ -351,12 +386,14 @@ export default function App() {
           onGoToShop={() => dispatch({ type: 'ENTER_MARKETPLACE' })}
           onOpenCart={() => setCartOpen(true)}
           cartCount={cart.count}
+          onGoToSellerProgram={handleEnterMarketStudio}
+          onGoToCreatorStudio={() => dispatch({ type: 'ENTER_CREATOR' })}
         />
         </>
       )}
 
       <AnimatePresence>
-        {railOpen && sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && (
+        {railOpen && sessionState !== 'ENTRY_LOBBY' && sessionState !== 'CREATOR_STUDIO' && sessionState !== 'MARKET_STUDIO' && (
           <BentoRail
             channels={channels}
             currentChannelId={currentChannel.id}
@@ -423,6 +460,7 @@ export default function App() {
           onOpenRail={handleOpenRail}
           onGoToCreatorStudio={() => dispatch({ type: 'ENTER_CREATOR' })}
           onGoToLiveView={() => dispatch({ type: 'CLOSE_RAIL' })}
+          onGoToSellerProgram={handleEnterMarketStudio}
         />
       )}
 

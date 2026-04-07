@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, ArrowLeft, TrendingUp, Flame, Sparkles,
   Clock, Gavel, Radio, ChevronRight, ChevronDown, Eye, SlidersHorizontal, X, Zap,
-  Tag, Star, Package, User, LayoutGrid, Tv,
+  Tag, Star, Package, User, LayoutGrid, Tv, Store,
 } from 'lucide-react';
 import * as api from '../services/api';
 import type { Product } from '../data/mockData';
-import type { MappedGateway, GatewayChannel } from '../services/api';
+import { MOCK_GATEWAY, MOCK_CHANNELS } from '../data/mockData';
+import type { MappedGateway, GatewayChannel, BillboardPlacement } from '../services/api';
 import { ButterflyIcon } from './ButterflyIcon';
 
 /* ── Constants ────────────────────────────────────────── */
@@ -19,6 +20,27 @@ const SORTS = [
   { value: 'price_desc', label: 'Price: High → Low' },
 ] as const;
 
+// All mock products for local fallback search
+const ALL_MOCK_PRODUCTS: Product[] = MOCK_CHANNELS.flatMap(ch =>
+  ch.products.map(p => ({ ...p, category: ch.category })),
+);
+
+function mockSearch(q: string, category?: string | null): Product[] {
+  let results = ALL_MOCK_PRODUCTS;
+  if (category && category !== 'All') {
+    results = results.filter(p => p.category === category);
+  }
+  if (q.trim()) {
+    const lower = q.toLowerCase();
+    results = results.filter(p =>
+      p.name.toLowerCase().includes(lower) ||
+      p.description.toLowerCase().includes(lower) ||
+      (p.category && p.category.toLowerCase().includes(lower))
+    );
+  }
+  return results;
+}
+
 type Props = {
   onViewProduct: (product: Product) => void;
   onOpenCart: () => void;
@@ -29,6 +51,7 @@ type Props = {
   onOpenRail?: () => void;
   onGoToCreatorStudio?: () => void;
   onGoToLiveView?: () => void;
+  onGoToSellerProgram?: () => void;
 };
 
 /* ── Section Header ───────────────────────────────────── */
@@ -97,13 +120,17 @@ function ProductCard({
         </div>
       )}
       <div className={`${aspects[size]} w-full bg-white/5 overflow-hidden`}>
-        {product.mediaUrl && (
+        {product.mediaUrl ? (
           <img
             src={product.mediaUrl}
             alt={product.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
           />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
+            <Package size={28} className="text-white/20" />
+          </div>
         )}
       </div>
       <div className="p-2.5">
@@ -195,56 +222,219 @@ function LiveChannelCard({ channel, onClick }: { channel: GatewayChannel; onClic
   );
 }
 
-/* ── Featured Hero Banner ─────────────────────────────── */
-function FeaturedHero({
-  channel, onWatch,
-}: { channel: GatewayChannel; onWatch: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6 }}
-      className="relative rounded-2xl overflow-hidden mb-6 cursor-pointer group"
-      onClick={onWatch}
-    >
-      <div className="aspect-[21/9] sm:aspect-[3/1] w-full bg-white/5 overflow-hidden relative">
-        {channel.thumbnail_url && (
-          <img
-            src={channel.thumbnail_url}
-            alt={channel.title}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-        )}
-        {/* Multi-layer gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0F]/80 to-transparent" />
+/* ── Billboard Hero Carousel ─────────────────────────── */
 
-        {/* Content overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-bold text-white uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live Now
-            </span>
-            <span className="flex items-center gap-1 text-xs text-white/60">
-              <Eye size={12} />
-              {channel.viewer_count >= 1000
-                ? `${(channel.viewer_count / 1000).toFixed(1)}K watching`
-                : `${channel.viewer_count} watching`}
-            </span>
+const BADGE_STYLES: Record<string, string> = {
+  amber: 'bg-amber-500/90 text-black',
+  rose: 'bg-rose-500/90 text-white',
+  indigo: 'bg-indigo-600 text-white',
+  emerald: 'bg-emerald-500/90 text-white',
+};
+
+function BillboardHero({
+  billboards,
+  fallbackChannel,
+  onWatchChannel,
+  onViewProduct,
+}: {
+  billboards: BillboardPlacement[];
+  fallbackChannel?: GatewayChannel;
+  onWatchChannel: (id: string) => void;
+  onViewProduct: (product: Product) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const impressionFired = useRef<Set<string>>(new Set());
+
+  // Build unified slides: billboards first, then fallback channel
+  const slides = billboards.length > 0 ? billboards : [];
+  const showFallback = slides.length === 0 && fallbackChannel;
+
+  // Auto-rotate every 8s
+  useEffect(() => {
+    if (slides.length <= 1 || paused) return;
+    const timer = setInterval(() => {
+      setActiveIndex(prev => (prev + 1) % slides.length);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [slides.length, paused]);
+
+  // Track impressions (fire once per billboard per session)
+  useEffect(() => {
+    if (slides.length === 0) return;
+    const bb = slides[activeIndex];
+    if (bb && !impressionFired.current.has(bb.id)) {
+      impressionFired.current.add(bb.id);
+      api.trackBillboardImpression(bb.id);
+    }
+  }, [activeIndex, slides]);
+
+  const handleClick = (bb: BillboardPlacement) => {
+    api.trackBillboardClick(bb.id);
+    if (bb.targetType === 'channel' && bb.targetId) {
+      onWatchChannel(bb.targetId);
+    } else if (bb.targetType === 'product' && bb.targetProduct) {
+      onViewProduct(bb.targetProduct as Product);
+    }
+  };
+
+  // Fallback: show the original featured live channel
+  if (showFallback) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="relative rounded-2xl overflow-hidden mb-6 cursor-pointer group"
+        onClick={() => onWatchChannel(fallbackChannel!.id)}
+      >
+        <div className="aspect-[21/9] sm:aspect-[3/1] w-full bg-white/5 overflow-hidden relative">
+          {fallbackChannel!.thumbnail_url && (
+            <img
+              src={fallbackChannel!.thumbnail_url}
+              alt={fallbackChannel!.title}
+              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0F]/80 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-bold text-white uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live Now
+              </span>
+              <span className="flex items-center gap-1 text-xs text-white/60">
+                <Eye size={12} />
+                {fallbackChannel!.viewer_count >= 1000
+                  ? `${(fallbackChannel!.viewer_count / 1000).toFixed(1)}K watching`
+                  : `${fallbackChannel!.viewer_count} watching`}
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-2xl font-black text-white leading-tight mb-1">
+              {fallbackChannel!.title}
+            </h2>
+            <p className="text-sm text-white/50">{fallbackChannel!.category}</p>
+            <button className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 text-sm font-bold text-white transition-colors shadow-lg shadow-indigo-500/30">
+              <Radio size={16} /> Watch Live
+            </button>
           </div>
-          <h2 className="text-lg sm:text-2xl font-black text-white leading-tight mb-1">
-            {channel.title}
-          </h2>
-          <p className="text-sm text-white/50">{channel.category}</p>
-          <button
-            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500
-              px-5 py-2.5 text-sm font-bold text-white transition-colors shadow-lg shadow-indigo-500/30"
-          >
-            <Radio size={16} /> Watch Live
-          </button>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    );
+  }
+
+  if (slides.length === 0) return null;
+
+  const current = slides[activeIndex];
+  const badgeClass = BADGE_STYLES[current.badgeColor] || BADGE_STYLES.indigo;
+
+  // FTC compliance: sponsored always shows "Sponsored"
+  const badgeLabel = current.billboardType === 'sponsored' ? 'Sponsored' : current.badgeText;
+  const isLiveTarget = current.targetType === 'channel' && current.targetChannel?.status === 'LIVE';
+
+  return (
+    <div
+      ref={heroRef}
+      className="relative rounded-2xl overflow-hidden mb-6"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={current.id}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.5 }}
+          className="relative cursor-pointer group"
+          onClick={() => handleClick(current)}
+        >
+          <div className="aspect-[21/9] sm:aspect-[3/1] w-full bg-white/5 overflow-hidden relative">
+            <img
+              src={current.imageUrl}
+              alt={current.title}
+              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+            {/* Gradient overlays */}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0F]/80 to-transparent" />
+
+            {/* Content */}
+            <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+              <div className="flex items-center gap-2 mb-2">
+                {/* Billboard type badge (FTC compliant) */}
+                {badgeLabel && (
+                  <span className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${badgeClass}`}>
+                    {current.billboardType === 'trending' && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    )}
+                    {badgeLabel}
+                  </span>
+                )}
+                {/* Live indicator for channel targets */}
+                {isLiveTarget && (
+                  <>
+                    <span className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-bold text-white uppercase tracking-wider">
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-white/60">
+                      <Eye size={12} />
+                      {current.targetChannel!.viewer_count >= 1000
+                        ? `${(current.targetChannel!.viewer_count / 1000).toFixed(1)}K watching`
+                        : `${current.targetChannel!.viewer_count} watching`}
+                    </span>
+                  </>
+                )}
+              </div>
+              <h2 className="text-lg sm:text-2xl font-black text-white leading-tight mb-0.5">
+                {current.title}
+              </h2>
+              {current.subtitle && (
+                <p className="text-sm text-white/60 mb-0.5">{current.subtitle}</p>
+              )}
+              {current.description && (
+                <p className="text-xs text-white/40 hidden sm:block">{current.description}</p>
+              )}
+              <button className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 text-sm font-bold text-white transition-colors shadow-lg shadow-indigo-500/30">
+                {current.targetType === 'channel' ? <Radio size={16} /> : <Tag size={16} />}
+                {current.ctaLabel}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Dot indicators */}
+      {slides.length > 1 && (
+        <div className="absolute bottom-3 right-4 flex items-center gap-1.5 z-10">
+          {slides.map((bb, i) => (
+            <button
+              key={bb.id}
+              onClick={(e) => { e.stopPropagation(); setActiveIndex(i); }}
+              className={`rounded-full transition-all duration-300 ${
+                i === activeIndex
+                  ? 'w-6 h-2 bg-white'
+                  : 'w-2 h-2 bg-white/30 hover:bg-white/50'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Progress bar for auto-rotation */}
+      {slides.length > 1 && !paused && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
+          <motion.div
+            key={`progress-${activeIndex}`}
+            initial={{ width: '0%' }}
+            animate={{ width: '100%' }}
+            transition={{ duration: 8, ease: 'linear' }}
+            className="h-full bg-indigo-500/60"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -316,7 +506,7 @@ function SearchResults({
   loading: boolean;
   query: string;
   condition: string;
-  sort: string;
+  sort: api.MarketplaceSearchParams['sort'];
   onViewProduct: (p: Product) => void;
   onConditionChange: (c: string) => void;
   onSortChange: (s: api.MarketplaceSearchParams['sort']) => void;
@@ -430,7 +620,7 @@ function SearchResults({
    ██  MAIN COMPONENT — Marketplace Gateway
    ══════════════════════════════════════════════════════════ */
 
-export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCount, onWatchChannel, onOpenProfile, onOpenRail, onGoToCreatorStudio, onGoToLiveView }: Props) {
+export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCount, onWatchChannel, onOpenProfile, onOpenRail, onGoToCreatorStudio, onGoToLiveView, onGoToSellerProgram }: Props) {
   /* ── State ── */
   const [gateway, setGateway] = useState<MappedGateway | null>(null);
   const [loading, setLoading] = useState(true);
@@ -448,13 +638,27 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   /* ── Load gateway data ── */
+  const useMockByDefault = import.meta.env.DEV || import.meta.env.VITE_FORCE_MOCK === 'true';
+
   useEffect(() => {
+    // In development, use mock gateway immediately so the full UI is always visible.
+    // The backend likely has sparse/empty data — mock lets you see and refine the UX.
+    if (useMockByDefault) {
+      setGateway(MOCK_GATEWAY as MappedGateway);
+      setLoading(false);
+      return;
+    }
+
+    // Production: fetch real data, only fall back to mock on network failure
     setLoading(true);
     api.getMarketplaceGateway()
       .then(setGateway)
-      .catch(() => {})
+      .catch(() => {
+        // Backend truly unreachable — show mock so the page isn't blank
+        setGateway(MOCK_GATEWAY as MappedGateway);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [useMockByDefault]);
 
   /* ── Search ── */
   const doSearch = useCallback(async (q: string) => {
@@ -462,17 +666,22 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
     setSearchLoading(true);
     setSearchActive(true);
     try {
-      const params: api.MarketplaceSearchParams = { q, sort, limit: 40 };
-      if (condition !== 'All') params.condition = condition;
-      if (activeCategory && activeCategory !== 'All') params.category = activeCategory;
-      const results = await api.searchProducts(params);
-      setSearchResults(results);
+      if (useMockByDefault) {
+        setSearchResults(mockSearch(q, activeCategory));
+      } else {
+        const params: api.MarketplaceSearchParams = { q, sort, limit: 40 };
+        if (condition !== 'All') params.condition = condition;
+        if (activeCategory && activeCategory !== 'All') params.category = activeCategory;
+        const results = await api.searchProducts(params);
+        setSearchResults(results);
+      }
     } catch {
-      setSearchResults([]);
+      // Network error in prod — fall back to local search
+      setSearchResults(mockSearch(q, activeCategory));
     } finally {
       setSearchLoading(false);
     }
-  }, [sort, condition, activeCategory]);
+  }, [sort, condition, activeCategory, useMockByDefault]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -491,13 +700,25 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
       setActiveCategory(null);
     } else {
       setActiveCategory(name);
-      // Search by category
       setSearchLoading(true);
       setSearchActive(true);
-      api.searchProducts({ category: name, sort, limit: 40 })
-        .then(results => { setSearchResults(results); setQuery(''); })
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
+
+      if (useMockByDefault) {
+        setSearchResults(mockSearch('', name));
+        setQuery('');
+        setSearchLoading(false);
+      } else {
+        api.searchProducts({ category: name, sort, limit: 40 })
+          .then(results => {
+            setSearchResults(results);
+            setQuery('');
+          })
+          .catch(() => {
+            setSearchResults(mockSearch('', name));
+            setQuery('');
+          })
+          .finally(() => setSearchLoading(false));
+      }
     }
   };
 
@@ -565,6 +786,25 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
           </div>
         </form>
 
+        {/* CTA links — centered */}
+        <div className="hidden sm:flex items-center gap-3">
+          <button
+            onClick={onGoToSellerProgram}
+            className="text-xs font-semibold text-white/40 hover:text-indigo-400 transition-colors whitespace-nowrap"
+            title="Apply to sell products on Greggie Marketplace"
+          >
+            Become a Seller
+          </button>
+          <span className="text-white/15">|</span>
+          <button
+            onClick={onGoToCreatorStudio}
+            className="text-xs font-semibold text-white/40 hover:text-indigo-400 transition-colors whitespace-nowrap"
+            title="Start streaming and selling live on Greggie"
+          >
+            Start a Channel
+          </button>
+        </div>
+
         {/* Spacer to push icons right */}
         <div className="flex-1" />
 
@@ -586,6 +826,15 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
             title="Creator Studio"
           >
             <Radio size={18} />
+          </button>
+
+          {/* Sell on Greggie */}
+          <button
+            onClick={onGoToSellerProgram}
+            className="p-2 rounded-xl hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors"
+            title="Sell on Greggie"
+          >
+            <Store size={18} />
           </button>
 
           {/* Categories dropdown */}
@@ -693,13 +942,13 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
           />
         ) : (
           <div className="px-4 sm:px-6 py-4 space-y-8">
-            {/* ── Featured Live Hero ── */}
-            {gw.featuredLive && (
-              <FeaturedHero
-                channel={gw.featuredLive}
-                onWatch={() => onWatchChannel?.(gw.featuredLive!.id)}
-              />
-            )}
+            {/* ── Billboard Hero ── */}
+            <BillboardHero
+              billboards={gw.billboards ?? []}
+              fallbackChannel={gw.featuredLive}
+              onWatchChannel={(id) => onWatchChannel?.(id)}
+              onViewProduct={onViewProduct}
+            />
 
             {/* ── Categories ── */}
             {gw.categories.length > 0 && (

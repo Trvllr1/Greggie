@@ -26,6 +26,8 @@ type LiveViewProps = {
   onGoToShop?: () => void;
   onOpenCart?: () => void;
   cartCount?: number;
+  onGoToSellerProgram?: () => void;
+  onGoToCreatorStudio?: () => void;
 };
 
 export function LiveView({ 
@@ -44,8 +46,18 @@ export function LiveView({
   onGoHome,
   onGoToShop,
   onOpenCart,
-  cartCount = 0
+  cartCount = 0,
+  onGoToSellerProgram,
+  onGoToCreatorStudio
 }: LiveViewProps) {
+  type LiveMessage = {
+    id: string;
+    user: string;
+    text: string;
+    isSystem?: boolean;
+    isQuestion?: boolean;
+  };
+
   const [butterflyHovered, setButterflyHovered] = useState(false);
   const [showRelayQuery, setShowRelayQuery] = useState(false);
   const [query, setQuery] = useState('');
@@ -53,7 +65,7 @@ export function LiveView({
   const [relayMatches, setRelayMatches] = useState<RelayMatch[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
-  const [messages, setMessages] = useState<{id: string; user: string; text: string; isSystem?: boolean; isQuestion?: boolean}>([
+  const [messages, setMessages] = useState<LiveMessage[]>([
     { id: '1', user: 'Alex', text: 'This looks amazing!' },
     { id: '2', user: 'Sam', text: 'Is there a warranty?' },
     { id: '3', user: 'Jordan', text: 'Just bought one 🚀' },
@@ -312,11 +324,25 @@ export function LiveView({
                   {feedType === 'FOR_YOU' && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-1 bg-white rounded-full" />}
                 </button>
                 <div className="h-4 w-px bg-white/30" />
-                <button 
+                <button
                   onClick={() => onGoToShop?.()}
                   className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
                 >
                   Shop
+                </button>
+                <div className="h-4 w-px bg-white/30" />
+                <button
+                  onClick={() => onGoToSellerProgram?.()}
+                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                >
+                  Sell
+                </button>
+                <div className="h-4 w-px bg-white/30" />
+                <button
+                  onClick={() => onGoToCreatorStudio?.()}
+                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                >
+                  Create
                 </button>
               </div>
 
@@ -841,7 +867,7 @@ export function LiveView({
                       </AnimatePresence>
 
                       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-                        {messages.map((msg) => (
+                        {messages.map((msg: LiveMessage) => (
                           <div key={msg.id} className="flex flex-col">
                             {msg.isSystem ? (
                               <span className="text-sm font-medium text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg inline-block w-fit">

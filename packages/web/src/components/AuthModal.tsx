@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { useState } from 'react';
-import { X, LogIn, UserPlus, Zap } from 'lucide-react';
+import { X, LogIn, UserPlus, Zap, Shield } from 'lucide-react';
 import * as api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
@@ -9,7 +9,7 @@ type AuthModalProps = {
 };
 
 export function AuthModal({ onClose }: AuthModalProps) {
-  const { login, register } = useAuth();
+  const { login, register, devLoginAs } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -40,14 +40,19 @@ export function AuthModal({ onClose }: AuthModalProps) {
     setLoading(true);
     try {
       await api.devLogin();
-      // devLogin sets the token but doesn't go through AuthProvider —
-      // reload to pick it up
       window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Dev login failed');
+    } catch {
+      // Backend unreachable — fall back to synthetic dev creator
+      devLoginAs('creator');
+      onClose();
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDevAdminLogin = () => {
+    devLoginAs('admin');
+    onClose();
   };
 
   return (
@@ -145,6 +150,16 @@ export function AuthModal({ onClose }: AuthModalProps) {
           >
             <Zap size={16} className="text-yellow-400" />
             Quick Dev Login
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDevAdminLogin}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-3 text-sm font-medium text-indigo-300 hover:bg-indigo-500/15 transition-colors disabled:opacity-60"
+          >
+            <Shield size={16} className="text-indigo-400" />
+            Dev Admin Login
           </button>
 
           <p className="text-center text-sm text-zinc-500">

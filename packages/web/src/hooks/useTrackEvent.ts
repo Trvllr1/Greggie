@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import * as api from '../services/api';
 
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+
 type TrackableEvent =
   | 'view_start'
   | 'view_end'
@@ -23,7 +25,7 @@ export function useTrackEvent() {
 
     // Fire and forget — don't block UI
     fetch(
-      `${import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}/api/v1/events`,
+      `${API_URL}/api/v1/events`,
       {
         method: 'POST',
         headers: {

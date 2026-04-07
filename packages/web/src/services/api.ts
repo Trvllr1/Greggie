@@ -652,6 +652,68 @@ export interface GatewayChannel {
   updated_at: string;
 }
 
+// ── Billboard types ──
+
+interface ApiBillboard {
+  id: string;
+  billboard_type: 'sponsored' | 'promoted' | 'trending' | 'campaign';
+  target_type: 'channel' | 'product' | 'campaign';
+  target_id?: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  image_url: string;
+  cta_label: string;
+  badge_text: string;
+  badge_color: string;
+  priority: number;
+  starts_at: string;
+  ends_at?: string;
+  status: string;
+  impressions: number;
+  clicks: number;
+  target_channel?: GatewayChannel;
+  target_product?: ApiProduct;
+}
+
+export interface BillboardPlacement {
+  id: string;
+  billboardType: 'sponsored' | 'promoted' | 'trending' | 'campaign';
+  targetType: 'channel' | 'product' | 'campaign';
+  targetId?: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  imageUrl: string;
+  ctaLabel: string;
+  badgeText: string;
+  badgeColor: string;
+  impressions: number;
+  clicks: number;
+  targetChannel?: GatewayChannel;
+  targetProduct?: Product;
+}
+
+function mapBillboard(b: ApiBillboard): BillboardPlacement {
+  return {
+    id: b.id,
+    billboardType: b.billboard_type,
+    targetType: b.target_type,
+    targetId: b.target_id,
+    title: b.title,
+    subtitle: b.subtitle,
+    description: b.description,
+    imageUrl: b.image_url,
+    ctaLabel: b.cta_label,
+    badgeText: b.badge_text,
+    badgeColor: b.badge_color,
+    impressions: b.impressions,
+    clicks: b.clicks,
+    targetChannel: b.target_channel,
+    targetProduct: b.target_product ? mapProduct(b.target_product) : undefined,
+  };
+}
+
 export interface MarketplaceGatewayData {
   categories: CategoryCount[];
   live_channels: GatewayChannel[];
@@ -661,6 +723,7 @@ export interface MarketplaceGatewayData {
   drops: ApiProduct[];
   auctions: ApiProduct[];
   featured_live?: GatewayChannel;
+  billboards?: ApiBillboard[];
 }
 
 export interface MappedGateway {
@@ -672,6 +735,7 @@ export interface MappedGateway {
   drops: Product[];
   auctions: Product[];
   featuredLive?: GatewayChannel;
+  billboards: BillboardPlacement[];
 }
 
 export async function getMarketplaceGateway(): Promise<MappedGateway> {
@@ -685,7 +749,18 @@ export async function getMarketplaceGateway(): Promise<MappedGateway> {
     drops: raw.drops.map(mapProduct),
     auctions: raw.auctions.map(mapProduct),
     featuredLive: raw.featured_live,
+    billboards: (raw.billboards ?? []).map(mapBillboard),
   };
+}
+
+// ── Billboard tracking ──
+
+export async function trackBillboardImpression(billboardId: string) {
+  return apiFetch<void>(`/billboards/${billboardId}/impression`, { method: 'POST' }).catch(() => {});
+}
+
+export async function trackBillboardClick(billboardId: string) {
+  return apiFetch<void>(`/billboards/${billboardId}/click`, { method: 'POST' }).catch(() => {});
 }
 
 // ── Shops ──────────────────────────────────────────────
@@ -878,14 +953,25 @@ export interface TaxEstimate {
   shipping_cents: number;
   tax_cents: number;
   tax_rate: number;
+  tax_source?: string;
   discount_cents: number;
   total_cents: number;
 }
 
-export async function estimateTax(items: MarketplaceCheckoutItem[], shippingMethod: string, couponCode?: string) {
+export async function estimateTax(
+  items: MarketplaceCheckoutItem[],
+  shippingMethod: string,
+  shippingAddress?: ShippingAddressInput,
+  couponCode?: string,
+) {
   return apiFetch<TaxEstimate>('/checkout/estimate', {
     method: 'POST',
-    body: JSON.stringify({ items, shipping_method: shippingMethod, coupon_code: couponCode ?? '' }),
+    body: JSON.stringify({
+      items,
+      shipping_method: shippingMethod,
+      shipping_address: shippingAddress,
+      coupon_code: couponCode ?? '',
+    }),
   });
 }
 
@@ -922,4 +1008,359 @@ export interface ShippingAddress {
 
 export async function getShippingAddresses() {
   return apiFetch<ShippingAddress[]>('/shipping-addresses');
+}
+
+// ── Seller Programs (CSP + MSP) ────────────────────────
+
+export interface SellerProgram {
+  id: string;
+  user_id: string;
+  program_type: 'csp' | 'msp';
+  status: 'pending' | 'approved' | 'active' | 'suspended' | 'rejected' | 'closed';
+  tier: 'new' | 'rising' | 'established' | 'partner';
+  agreed_at?: string;
+  agreement_version: string;
+  application_note?: string;
+  rejection_reason?: string;
+  approved_at?: string;
+  activated_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramCommissionRule {
+  id: string;
+  program_type: string;
+  tier: string;
+  commission_pct: number;
+  listing_fee_cents: number;
+  is_active: boolean;
+}
+
+export interface ProgramStatusResponse {
+  program: SellerProgram;
+  commission: ProgramCommissionRule | null;
+}
+
+export interface SellerDashboard {
+  program: SellerProgram;
+  total_revenue_cents: number;
+  total_orders: number;
+  pending_payouts_cents: number;
+  paid_payouts_cents: number;
+  commission_pct: number;
+  current_tier: string;
+  // CSP-specific
+  total_stream_hours?: number;
+  total_viewers?: number;
+  // MSP-specific
+  active_listings?: number;
+  pending_orders?: number;
+  shipped_orders?: number;
+}
+
+export interface SellerPayout {
+  id: string;
+  program_type: string;
+  order_id: string;
+  gross_cents: number;
+  commission_cents: number;
+  net_cents: number;
+  payout_status: string;
+  stripe_transfer_id?: string;
+  paid_at?: string;
+  created_at: string;
+}
+
+export interface FulfillmentRecord {
+  id: string;
+  order_id: string;
+  seller_id: string;
+  fulfillment_type: string;
+  tracking_number?: string;
+  carrier?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface SellerOrderView {
+  id: string;
+  user_id: string;
+  status: string;
+  total_cents: number;
+  created_at: string;
+  items: { id: string; product_id: string; quantity: number; price_cents: number }[];
+  fulfillment?: FulfillmentRecord;
+  buyer_email: string;
+  shipping_address?: ShippingAddress;
+}
+
+export interface SellerAnalyticsDay {
+  date: string;
+  revenue_cents: number;
+  orders_count: number;
+  units_sold: number;
+  views: number;
+  conversion_rate: number;
+}
+
+// Enrollment
+export async function enrollProgram(programType: 'csp' | 'msp', applicationNote = '') {
+  return apiFetch<SellerProgram>('/programs/enroll', {
+    method: 'POST',
+    body: JSON.stringify({ program_type: programType, agreed_to_terms: true, application_note: applicationNote }),
+  });
+}
+
+export async function getMyPrograms(): Promise<SellerProgram[]> {
+  return apiFetch<SellerProgram[]>('/programs');
+}
+
+export async function getProgramStatus(type: 'csp' | 'msp'): Promise<ProgramStatusResponse> {
+  return apiFetch<ProgramStatusResponse>(`/programs/${type}`);
+}
+
+// Dashboards
+export async function getCSPDashboard(): Promise<SellerDashboard> {
+  return apiFetch<SellerDashboard>('/programs/csp/dashboard');
+}
+
+export async function getMSPDashboard(): Promise<SellerDashboard> {
+  return apiFetch<SellerDashboard>('/programs/msp/dashboard');
+}
+
+// Seller orders
+export async function getSellerOrders(
+  type: 'csp' | 'msp',
+  params?: { status?: string; limit?: number; offset?: number },
+): Promise<SellerOrderView[]> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<SellerOrderView[]>(`/programs/${type}/orders?${qs.toString()}`);
+}
+
+// Payouts
+export async function getSellerPayouts(
+  type: 'csp' | 'msp',
+  params?: { status?: string; limit?: number; offset?: number },
+): Promise<SellerPayout[]> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<SellerPayout[]>(`/programs/${type}/payouts?${qs.toString()}`);
+}
+
+// Fulfillment
+export async function updateOrderFulfillment(orderId: string, data: { tracking_number?: string; carrier?: string; status?: string }) {
+  return apiFetch<FulfillmentRecord>(`/programs/orders/${orderId}/fulfillment`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+// Analytics
+export async function getSellerAnalytics(
+  type: 'csp' | 'msp',
+  from?: string,
+  to?: string,
+): Promise<SellerAnalyticsDay[]> {
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  return apiFetch<SellerAnalyticsDay[]>(`/programs/${type}/analytics?${qs.toString()}`);
+}
+
+// ── Password Reset ──────────────────────────────────────────
+
+export async function forgotPassword(email: string) {
+  return apiFetch<{ message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string) {
+  return apiFetch<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+// ── Uploads (S3 presigned) ──────────────────────────────────
+
+export interface PresignRequest {
+  entity_type: 'product' | 'channel' | 'user' | 'shop';
+  entity_id: string;
+  filename: string;
+  content_type: string;
+}
+
+export interface PresignResponse {
+  upload_id: string;
+  upload_url: string;
+  public_url: string;
+}
+
+export async function presignUpload(req: PresignRequest): Promise<PresignResponse> {
+  return apiFetch<PresignResponse>('/uploads/presign', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+export async function completeUpload(uploadId: string) {
+  return apiFetch<{ id: string; url: string; status: string }>(`/uploads/${uploadId}/complete`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Upload a file to S3 via presigned URL, then mark complete.
+ * Returns the public URL of the uploaded file.
+ */
+export async function uploadFile(
+  file: File,
+  entityType: PresignRequest['entity_type'],
+  entityId: string,
+): Promise<string> {
+  const { upload_id, upload_url, public_url } = await presignUpload({
+    entity_type: entityType,
+    entity_id: entityId,
+    filename: file.name,
+    content_type: file.type,
+  });
+
+  // Direct upload to S3
+  await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+
+  await completeUpload(upload_id);
+  return public_url;
+}
+
+// ── Admin ───────────────────────────────────────────────────
+
+export interface AdminStats {
+  total_users: number;
+  total_orders: number;
+  total_revenue_cents: number;
+  live_channels: number;
+  pending_programs: number;
+  active_products: number;
+  pending_payouts_cents: number;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  return apiFetch<AdminStats>('/admin/stats');
+}
+
+export async function adminListUsers(params?: { role?: string; limit?: number; offset?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.role) qs.set('role', params.role);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<{ users: any[]; total: number }>(`/admin/users?${qs.toString()}`);
+}
+
+export async function adminListOrders(params?: { status?: string; limit?: number; offset?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<{ orders: any[]; total: number }>(`/admin/orders?${qs.toString()}`);
+}
+
+export async function adminListPrograms(params?: { status?: string; limit?: number; offset?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<{ programs: SellerProgram[]; total: number }>(`/admin/programs?${qs.toString()}`);
+}
+
+export async function adminUpdateProgram(programId: string, status: string, reason = '') {
+  return apiFetch<{ status: string }>(`/admin/programs/${programId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status, reason }),
+  });
+}
+
+export async function adminProcessPayouts() {
+  return apiFetch<{ processed: number; failed: number; total: number }>('/admin/payouts/process', {
+    method: 'POST',
+  });
+}
+
+// ── Admin Billboards ─────────────────────────────────────
+
+export async function adminListBillboards(params?: { status?: string; limit?: number; offset?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return apiFetch<{ billboards: ApiBillboard[]; total: number }>(`/admin/billboards?${qs.toString()}`);
+}
+
+export async function adminGetBillboard(id: string) {
+  return apiFetch<ApiBillboard>(`/admin/billboards/${id}`);
+}
+
+export async function adminCreateBillboard(data: {
+  billboard_type: string;
+  target_type: string;
+  target_id?: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  image_url: string;
+  cta_label?: string;
+  badge_text?: string;
+  badge_color?: string;
+  priority?: number;
+  starts_at: string;
+  ends_at?: string;
+  status?: string;
+  budget_cents?: number;
+  cpm_cents?: number;
+}) {
+  return apiFetch<ApiBillboard>('/admin/billboards', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function adminUpdateBillboard(id: string, data: Partial<{
+  billboard_type: string;
+  target_type: string;
+  target_id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  image_url: string;
+  cta_label: string;
+  badge_text: string;
+  badge_color: string;
+  priority: number;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  budget_cents: number;
+  cpm_cents: number;
+}>) {
+  return apiFetch<{ status: string }>(`/admin/billboards/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function adminDeleteBillboard(id: string) {
+  return apiFetch<void>(`/admin/billboards/${id}`, { method: 'DELETE' });
 }

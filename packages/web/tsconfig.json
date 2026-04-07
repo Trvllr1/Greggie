@@ -16,6 +16,5 @@
       "@greggie/core": ["../core/src"]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "../core" }]
+  "include": ["src"]
 }

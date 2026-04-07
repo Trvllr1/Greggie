@@ -4,14 +4,41 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/stripe/stripe-go/v82"
 	"github.com/stripe/stripe-go/v82/account"
 	"github.com/stripe/stripe-go/v82/accountlink"
 	"github.com/stripe/stripe-go/v82/paymentintent"
+	"github.com/stripe/stripe-go/v82/tax/calculation"
+	"github.com/stripe/stripe-go/v82/tax/transaction"
+	"github.com/stripe/stripe-go/v82/transfer"
 )
 
 var webhookSecret string
+
+type TaxAddress struct {
+	Line1      string
+	City       string
+	State      string
+	PostalCode string
+	Country    string
+}
+
+type TaxLineItem struct {
+	Reference   string
+	AmountCents int64
+	Quantity    int64
+	TaxCode     string
+}
+
+type TaxCalculationResult struct {
+	CalculationID string
+	TaxCents      int64
+	TaxRate       float64
+	TotalCents    int64
+}
 
 // Init configures the Stripe SDK. Must be called at startup.
 func Init() {
@@ -131,4 +158,130 @@ func CreatePaymentIntent(amountCents int64, currency string, sellerAccountID str
 func CancelPaymentIntent(paymentIntentID string) error {
 	_, err := paymentintent.Cancel(paymentIntentID, nil)
 	return err
+}
+
+func CalculateTax(currency string, customerAddress TaxAddress, shippingCents int64, items []TaxLineItem) (*TaxCalculationResult, error) {
+	if !Enabled() {
+		return nil, fmt.Errorf("stripe not enabled")
+	}
+	if len(items) == 0 {
+		return &TaxCalculationResult{}, nil
+	}
+
+	params := &stripe.TaxCalculationParams{
+		Currency: stripe.String(strings.ToLower(currency)),
+		CustomerDetails: &stripe.TaxCalculationCustomerDetailsParams{
+			Address: &stripe.AddressParams{
+				Line1:      stripe.String(customerAddress.Line1),
+				City:       stripe.String(customerAddress.City),
+				State:      stripe.String(customerAddress.State),
+				PostalCode: stripe.String(customerAddress.PostalCode),
+				Country:    stripe.String(strings.ToUpper(defaultTaxAddressValue(customerAddress.Country, "US"))),
+			},
+			AddressSource: stripe.String("shipping"),
+		},
+		ShipFromDetails: &stripe.TaxCalculationShipFromDetailsParams{
+			Address: &stripe.AddressParams{
+				Line1:      stripe.String(defaultTaxAddressValue(os.Getenv("STRIPE_TAX_SHIP_FROM_LINE1"), "55 W 25th St")),
+				City:       stripe.String(defaultTaxAddressValue(os.Getenv("STRIPE_TAX_SHIP_FROM_CITY"), "New York")),
+				State:      stripe.String(defaultTaxAddressValue(os.Getenv("STRIPE_TAX_SHIP_FROM_STATE"), "NY")),
+				PostalCode: stripe.String(defaultTaxAddressValue(os.Getenv("STRIPE_TAX_SHIP_FROM_POSTAL_CODE"), "10010")),
+				Country:    stripe.String(strings.ToUpper(defaultTaxAddressValue(os.Getenv("STRIPE_TAX_SHIP_FROM_COUNTRY"), "US"))),
+			},
+		},
+		TaxDate: stripe.Int64(time.Now().Unix()),
+	}
+
+	var taxableBase int64
+	for _, item := range items {
+		if item.AmountCents <= 0 {
+			continue
+		}
+		taxableBase += item.AmountCents
+		params.LineItems = append(params.LineItems, &stripe.TaxCalculationLineItemParams{
+			Amount:      stripe.Int64(item.AmountCents),
+			Quantity:    stripe.Int64(item.Quantity),
+			Reference:   stripe.String(item.Reference),
+			TaxBehavior: stripe.String("exclusive"),
+			TaxCode:     stripe.String(defaultTaxAddressValue(item.TaxCode, "txcd_99999999")),
+		})
+	}
+
+	if shippingCents > 0 {
+		shippingCost := &stripe.TaxCalculationShippingCostParams{
+			Amount:      stripe.Int64(shippingCents),
+			TaxBehavior: stripe.String("exclusive"),
+		}
+		if shippingTaxCode := os.Getenv("STRIPE_TAX_SHIPPING_CODE"); shippingTaxCode != "" {
+			shippingCost.TaxCode = stripe.String(shippingTaxCode)
+		}
+		params.ShippingCost = shippingCost
+		taxableBase += shippingCents
+	}
+
+	calc, err := calculation.New(params)
+	if err != nil {
+		return nil, fmt.Errorf("stripe tax calculation: %w", err)
+	}
+
+	effectiveRate := 0.0
+	if taxableBase > 0 {
+		effectiveRate = float64(calc.TaxAmountExclusive) / float64(taxableBase)
+	}
+
+	return &TaxCalculationResult{
+		CalculationID: calc.ID,
+		TaxCents:      calc.TaxAmountExclusive,
+		TaxRate:       effectiveRate,
+		TotalCents:    calc.AmountTotal,
+	}, nil
+}
+
+func CreateTaxTransactionFromCalculation(calculationID, reference string, metadata map[string]string) (string, error) {
+	if !Enabled() {
+		return "", fmt.Errorf("stripe not enabled")
+	}
+
+	params := &stripe.TaxTransactionCreateFromCalculationParams{
+		Calculation: stripe.String(calculationID),
+		Reference:   stripe.String(reference),
+		PostedAt:    stripe.Int64(time.Now().Unix()),
+	}
+	for key, value := range metadata {
+		params.AddMetadata(key, value)
+	}
+
+	txn, err := transaction.CreateFromCalculation(params)
+	if err != nil {
+		return "", fmt.Errorf("create stripe tax transaction: %w", err)
+	}
+	return txn.ID, nil
+}
+
+func defaultTaxAddressValue(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+// CreateTransfer sends funds to a connected Stripe account (seller payout).
+func CreateTransfer(amountCents int64, currency, destinationAccountID, description, idempotencyKey string) (string, error) {
+	if !Enabled() {
+		return "", fmt.Errorf("stripe not enabled")
+	}
+	params := &stripe.TransferParams{
+		Amount:      stripe.Int64(amountCents),
+		Currency:    stripe.String(strings.ToLower(currency)),
+		Destination: stripe.String(destinationAccountID),
+		Description: stripe.String(description),
+	}
+	if idempotencyKey != "" {
+		params.SetIdempotencyKey(idempotencyKey)
+	}
+	t, err := transfer.New(params)
+	if err != nil {
+		return "", fmt.Errorf("create transfer: %w", err)
+	}
+	return t.ID, nil
 }

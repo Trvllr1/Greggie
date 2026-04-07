@@ -45,7 +45,7 @@ export function BidModal({ product, onClose, onBid }: BidModalProps) {
   const [liveEndTime, setLiveEndTime] = useState(product.endTime);
   const [outbid, setOutbid] = useState(false);
   const [bidHistory, setBidHistory] = useState<api.BidHistoryItem[]>([]);
-  const outbidTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const outbidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { on } = useWebSocket();
   const { remaining, urgency } = useCountdown(liveEndTime);

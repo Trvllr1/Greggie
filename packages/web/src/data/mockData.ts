@@ -166,6 +166,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Samsung Galaxy Unpacked',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.tech,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 14200,
     badge: 'EXCLUSIVE',
     category: 'Tech',
@@ -201,6 +202,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'NYC Boutique Drop',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.fashion,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 3200,
     badge: 'FLASH',
     category: 'Fashion',
@@ -225,6 +227,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Vintage Card Breaks',
     type: 'RELAY',
     streamUrl: MOCK_STREAMS.collectibles,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 850,
     badge: 'REPLAY',
     category: 'Collectibles',
@@ -251,6 +254,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'GlowUp Summer Collection',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.beauty,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 28500,
     badge: 'TRENDING',
     category: 'Beauty',
@@ -285,6 +289,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Chef Mario Cooks Live',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.food,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 5400,
     category: 'Food',
     merchant: {
@@ -308,6 +313,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Live Canvas: Abstract Series',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.art,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 1200,
     badge: 'ART',
     category: 'Art',
@@ -334,6 +340,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'SneakerHeadz: Rare Jordan Drop',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.sneakers,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 45000,
     badge: 'HYPE',
     category: 'Fashion',
@@ -359,6 +366,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Luxe Watches Vault',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.luxury,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 8900,
     badge: 'LUXURY',
     category: 'Luxury',
@@ -385,6 +393,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Iron & Yoga Essentials',
     type: 'RELAY',
     streamUrl: MOCK_STREAMS.fitness,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 450,
     category: 'Fitness',
     merchant: {
@@ -408,6 +417,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Classic Car Auctions',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.automotive,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 12400,
     badge: 'PREMIUM',
     category: 'Automotive',
@@ -434,6 +444,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'TechReview: Unboxing the Future',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.tech2,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1593508512255-86ab42a8e620?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 18500,
     category: 'Tech',
     merchant: {
@@ -458,6 +469,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'K-Pop Merch Exclusive',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.kpop,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 52000,
     badge: 'GLOBAL',
     category: 'Collectibles',
@@ -482,6 +494,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Minimalist Home Decor',
     type: 'SCHEDULED',
     streamUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&q=80&w=800&h=600',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 0,
     category: 'Home',
     merchant: {
@@ -506,6 +519,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Spoiled Pups Boutique',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.pets,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 6700,
     category: 'Pets',
     merchant: {
@@ -529,6 +543,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Adventure Awaits: Travel Gear',
     type: 'RELAY',
     streamUrl: MOCK_STREAMS.travel,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 1100,
     category: 'Travel',
     merchant: {
@@ -552,6 +567,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Custom Kicks Live',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.artkicks,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1460353581641-37baddab0fa2?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 8500,
     badge: 'CREATIVE',
     category: 'Art',
@@ -578,6 +594,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Rare Books & Manuscripts',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.books,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 3200,
     category: 'Collectibles',
     merchant: {
@@ -603,6 +620,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Urban Jungle: Rare Plants',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.plants,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1459411552884-841db9b3cc2a?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 14500,
     badge: 'DROP',
     category: 'Home',
@@ -628,6 +646,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Indie Game Showcase',
     type: 'LIVE',
     streamUrl: MOCK_STREAMS.gaming,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 22000,
     category: 'Tech',
     merchant: {
@@ -651,6 +670,7 @@ export const MOCK_CHANNELS: Channel[] = [
     title: 'Vintage Vinyl Digging',
     type: 'RELAY',
     streamUrl: MOCK_STREAMS.vinyl,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=640&h=360&q=80',
     viewers: 2800,
     category: 'Collectibles',
     merchant: {
@@ -670,3 +690,119 @@ export const MOCK_CHANNELS: Channel[] = [
     ],
   }
 ];
+
+/* ── Derived mock gateway for marketplace fallback ────────────── */
+
+// Collect all products across channels
+const ALL_MOCK_PRODUCTS: Product[] = MOCK_CHANNELS.flatMap(ch => ch.products);
+
+// Category icon map (mirrors backend categoryIcons)
+const CATEGORY_ICONS: Record<string, string> = {
+  Tech: '💻', Fashion: '👗', Collectibles: '🎴', Beauty: '✨',
+  Food: '🍕', Art: '🎨', Fitness: '💪', Automotive: '🚗',
+  Home: '🏠', Luxury: '💎', Pets: '🐾', Travel: '✈️',
+  Marketplace: '🛍️',
+};
+
+// Build category counts from channels
+function buildCategories() {
+  const counts: Record<string, number> = {};
+  MOCK_CHANNELS.forEach(ch => {
+    counts[ch.category] = (counts[ch.category] ?? 0) + ch.products.length;
+  });
+  return Object.entries(counts).map(([name, count]) => ({
+    name,
+    count,
+    icon: CATEGORY_ICONS[name] ?? '🛍️',
+  }));
+}
+
+// Map Channel → GatewayChannel shape
+function channelToGateway(ch: Channel) {
+  return {
+    id: ch.id,
+    creator_id: '',
+    title: ch.title,
+    description: '',
+    category: ch.category,
+    thumbnail_url: ch.thumbnailUrl ?? '',
+    stream_url: ch.streamUrl,
+    status: ch.type,
+    viewer_count: ch.viewers,
+    sale_type: ch.products[0]?.saleType ?? 'buy_now',
+    is_primary: !!ch.isPrimary,
+    badge: ch.badge,
+    scheduled_at: ch.scheduledStartTime,
+    created_at: '',
+    updated_at: '',
+  };
+}
+
+const liveChannels = MOCK_CHANNELS
+  .filter(ch => ch.type === 'LIVE')
+  .sort((a, b) => b.viewers - a.viewers);
+
+export const MOCK_GATEWAY = {
+  categories: buildCategories(),
+  liveChannels: liveChannels.map(channelToGateway),
+  trending: ALL_MOCK_PRODUCTS.slice(0, 10),
+  deals: ALL_MOCK_PRODUCTS.filter(p => p.saleType === 'buy_now').slice(0, 8),
+  newArrivals: [...ALL_MOCK_PRODUCTS].reverse().slice(0, 8),
+  drops: ALL_MOCK_PRODUCTS.filter(p => p.saleType === 'drop'),
+  auctions: ALL_MOCK_PRODUCTS.filter(p => p.saleType === 'auction'),
+  featuredLive: liveChannels.length > 0 ? channelToGateway(liveChannels[0]) : undefined,
+  billboards: [
+    {
+      id: 'bb-1',
+      billboardType: 'sponsored' as const,
+      targetType: 'channel' as const,
+      targetId: 'c7',
+      title: 'Air Jordan 1 Retro High OG',
+      subtitle: 'SneakerHeadz Official Drop',
+      description: 'Limited release. Live now.',
+      imageUrl: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=1200&h=400&q=80',
+      ctaLabel: 'Watch Live',
+      badgeText: 'Sponsored',
+      badgeColor: 'amber',
+      impressions: 24500,
+      clicks: 1830,
+      targetChannel: MOCK_CHANNELS.find(c => c.id === 'c7')
+        ? channelToGateway(MOCK_CHANNELS.find(c => c.id === 'c7')!)
+        : undefined,
+    },
+    {
+      id: 'bb-2',
+      billboardType: 'promoted' as const,
+      targetType: 'product' as const,
+      targetId: 'p5',
+      title: 'Sunset Eyeshadow Palette',
+      subtitle: 'GlowUp Summer Collection',
+      description: '12 warm pigmented shades — trending now.',
+      imageUrl: 'https://images.unsplash.com/photo-1583241800698-e8ab01830a07?auto=format&fit=crop&w=1200&h=400&q=80',
+      ctaLabel: 'Shop Now',
+      badgeText: 'Featured',
+      badgeColor: 'rose',
+      impressions: 18200,
+      clicks: 920,
+      targetProduct: MOCK_CHANNELS.find(c => c.id === 'c4')?.products[0],
+    },
+    {
+      id: 'bb-3',
+      billboardType: 'trending' as const,
+      targetType: 'channel' as const,
+      targetId: 'c12',
+      title: 'K-Pop Merch Exclusive',
+      subtitle: 'Seoul Station x BTS',
+      description: '52K watching right now.',
+      imageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&h=400&q=80',
+      ctaLabel: 'Watch Live',
+      badgeText: 'Trending',
+      badgeColor: 'indigo',
+      impressions: 52000,
+      clicks: 4100,
+      targetChannel: MOCK_CHANNELS.find(c => c.id === 'c12')
+        ? channelToGateway(MOCK_CHANNELS.find(c => c.id === 'c12')!)
+        : undefined,
+    },
+  ],
+};

@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -26,8 +28,7 @@ var shippingRates = map[string]int64{
 	"overnight": 2499, // $24.99
 }
 
-// Tax rate (simplified flat rate — would be replaced with tax API in production)
-const taxRate = 0.0825 // 8.25%
+const fallbackTaxRate = 0.0825
 
 func (h *CheckoutHandler) InitCheckout(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
@@ -99,6 +100,8 @@ func (h *CheckoutHandler) InitCheckout(c *fiber.Ctx) error {
 		order.StripePaymentID = piID
 		order.StripeClientSecret = clientSecret
 		_ = h.Store.UpdateOrderStripePaymentID(order.ID, piID, clientSecret)
+	} else if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
+		log.Printf("checkout: failed to create seller artifacts for order %s: %v", order.ID, err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(order)
@@ -152,6 +155,7 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 			City:         addr.City,
 			State:        addr.State,
 			ZipCode:      addr.ZipCode,
+			Country:      "US",
 			Phone:        addr.Phone,
 			IsDefault:    true,
 		}
@@ -164,16 +168,24 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 	// Calculate subtotal by looking up each product
 	var subtotalCents int64
 	var orderItems []models.OrderItem
+	var taxLineItems []payments.TaxLineItem
 	for _, item := range req.Items {
 		product, err := h.Store.GetProductByID(item.ProductID)
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "product " + item.ProductID + " not found"})
 		}
-		subtotalCents += product.PriceCents * int64(item.Quantity)
+		lineTotal := product.PriceCents * int64(item.Quantity)
+		subtotalCents += lineTotal
 		orderItems = append(orderItems, models.OrderItem{
 			ProductID:  item.ProductID,
 			Quantity:   item.Quantity,
 			PriceCents: product.PriceCents,
+		})
+		taxLineItems = append(taxLineItems, payments.TaxLineItem{
+			Reference:   item.ProductID,
+			AmountCents: lineTotal,
+			Quantity:    int64(item.Quantity),
+			TaxCode:     product.TaxCode,
 		})
 	}
 
@@ -193,12 +205,10 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 		couponID = coupon.ID
 	}
 
-	// Calculate tax (on subtotal AFTER discount)
-	taxableAmount := subtotalCents - discountCents
-	if taxableAmount < 0 {
-		taxableAmount = 0
+	taxCents, taxRate, taxSource, taxCalculationID, err := h.calculateMarketplaceTax(addr, shippingCents, discountCents, taxLineItems)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate tax"})
 	}
-	taxCents := int64(math.Round(float64(taxableAmount) * taxRate))
 	totalCents := subtotalCents - discountCents + shippingCents + taxCents
 	if totalCents < 0 {
 		totalCents = 0
@@ -235,27 +245,48 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 		_ = h.Store.IncrementCouponUses(couponID)
 	}
 
+	if taxSource == "stripe_tax" && taxCalculationID != "" {
+		if _, err := payments.CreateTaxTransactionFromCalculation(taxCalculationID, order.ID, map[string]string{
+			"order_id": order.ID,
+			"tax_rate": fmt.Sprintf("%.6f", taxRate),
+		}); err != nil {
+			log.Printf("checkout: failed to create Stripe tax transaction for order %s: %v", order.ID, err)
+		}
+	}
+	if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
+		log.Printf("checkout: failed to create seller artifacts for marketplace order %s: %v", order.ID, err)
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(order)
 }
 
 // EstimateTax returns a tax/shipping estimate for the cart
 func (h *CheckoutHandler) EstimateTax(c *fiber.Ctx) error {
 	var req struct {
-		Items          []models.MarketplaceCheckoutItem `json:"items"`
-		ShippingMethod string                           `json:"shipping_method"`
-		CouponCode     string                           `json:"coupon_code"`
+		Items           []models.MarketplaceCheckoutItem `json:"items"`
+		ShippingAddress models.ShippingAddressInput      `json:"shipping_address"`
+		ShippingMethod  string                           `json:"shipping_method"`
+		CouponCode      string                           `json:"coupon_code"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
 	var subtotalCents int64
+	var taxLineItems []payments.TaxLineItem
 	for _, item := range req.Items {
 		product, err := h.Store.GetProductByID(item.ProductID)
 		if err != nil {
 			continue
 		}
-		subtotalCents += product.PriceCents * int64(item.Quantity)
+		lineTotal := product.PriceCents * int64(item.Quantity)
+		subtotalCents += lineTotal
+		taxLineItems = append(taxLineItems, payments.TaxLineItem{
+			Reference:   item.ProductID,
+			AmountCents: lineTotal,
+			Quantity:    int64(item.Quantity),
+			TaxCode:     product.TaxCode,
+		})
 	}
 
 	shippingCents := shippingRates["standard"]
@@ -273,11 +304,10 @@ func (h *CheckoutHandler) EstimateTax(c *fiber.Ctx) error {
 		}
 	}
 
-	taxableAmount := subtotalCents - discountCents
-	if taxableAmount < 0 {
-		taxableAmount = 0
+	taxCents, taxRate, taxSource, _, err := h.calculateMarketplaceTax(req.ShippingAddress, shippingCents, discountCents, taxLineItems)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate tax"})
 	}
-	taxCents := int64(math.Round(float64(taxableAmount) * taxRate))
 	totalCents := subtotalCents - discountCents + shippingCents + taxCents
 	if totalCents < 0 {
 		totalCents = 0
@@ -288,6 +318,7 @@ func (h *CheckoutHandler) EstimateTax(c *fiber.Ctx) error {
 		ShippingCents: shippingCents,
 		TaxCents:      taxCents,
 		TaxRate:       taxRate,
+		TaxSource:     taxSource,
 		DiscountCents: discountCents,
 		TotalCents:    totalCents,
 	})
@@ -383,6 +414,79 @@ func calcDiscount(coupon *models.Coupon, subtotalCents int64) int64 {
 	default:
 		return 0
 	}
+}
+
+func (h *CheckoutHandler) calculateMarketplaceTax(addr models.ShippingAddressInput, shippingCents, discountCents int64, items []payments.TaxLineItem) (int64, float64, string, string, error) {
+	adjustedItems := prorateDiscountAcrossLineItems(items, discountCents)
+	if payments.Enabled() && isTaxAddressComplete(addr) {
+		result, err := payments.CalculateTax("usd", payments.TaxAddress{
+			Line1:      addr.AddressLine1,
+			City:       addr.City,
+			State:      addr.State,
+			PostalCode: addr.ZipCode,
+			Country:    "US",
+		}, shippingCents, adjustedItems)
+		if err == nil {
+			return result.TaxCents, result.TaxRate, "stripe_tax", result.CalculationID, nil
+		}
+		if os.Getenv("ENVIRONMENT") != "dev" && os.Getenv("ENVIRONMENT") != "test" {
+			return 0, 0, "", "", err
+		}
+		log.Printf("checkout: Stripe Tax unavailable, falling back to static estimate: %v", err)
+	}
+
+	taxableAmount := int64(0)
+	for _, item := range adjustedItems {
+		taxableAmount += item.AmountCents
+	}
+	if taxableAmount < 0 {
+		taxableAmount = 0
+	}
+	fallback := int64(math.Round(float64(taxableAmount) * fallbackTaxRate))
+	return fallback, fallbackTaxRate, "fallback", "", nil
+}
+
+func prorateDiscountAcrossLineItems(items []payments.TaxLineItem, discountCents int64) []payments.TaxLineItem {
+	adjusted := make([]payments.TaxLineItem, len(items))
+	copy(adjusted, items)
+	if discountCents <= 0 || len(adjusted) == 0 {
+		return adjusted
+	}
+
+	var subtotal int64
+	for _, item := range adjusted {
+		subtotal += item.AmountCents
+	}
+	if subtotal <= 0 {
+		return adjusted
+	}
+
+	remainingDiscount := discountCents
+	for index := range adjusted {
+		share := int64(0)
+		if index == len(adjusted)-1 {
+			share = remainingDiscount
+		} else {
+			share = int64(math.Round(float64(adjusted[index].AmountCents) * float64(discountCents) / float64(subtotal)))
+			if share > remainingDiscount {
+				share = remainingDiscount
+			}
+		}
+		if share > adjusted[index].AmountCents {
+			share = adjusted[index].AmountCents
+		}
+		adjusted[index].AmountCents -= share
+		remainingDiscount -= share
+	}
+
+	return adjusted
+}
+
+func isTaxAddressComplete(addr models.ShippingAddressInput) bool {
+	return strings.TrimSpace(addr.AddressLine1) != "" &&
+		strings.TrimSpace(addr.City) != "" &&
+		strings.TrimSpace(addr.State) != "" &&
+		strings.TrimSpace(addr.ZipCode) != ""
 }
 
 func contains(s, substr string) bool {

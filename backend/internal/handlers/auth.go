@@ -1,8 +1,13 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
+	"time"
 
+	"greggie/backend/internal/email"
 	"greggie/backend/internal/middleware"
 	"greggie/backend/internal/models"
 	"greggie/backend/internal/store"
@@ -124,4 +129,89 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
 	}
 	return c.JSON(user)
+}
+
+// ForgotPassword sends a password reset email with a one-time token.
+func (h *AuthHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req models.PasswordResetRequest
+	if err := c.BodyParser(&req); err != nil || req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email is required"})
+	}
+
+	// Always return success to prevent email enumeration
+	user, err := h.Store.GetUserByEmail(req.Email)
+	if err != nil {
+		return c.JSON(fiber.Map{"message": "if that email exists, a reset link has been sent"})
+	}
+
+	// Generate a 32-byte random token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate token"})
+	}
+	rawToken := hex.EncodeToString(tokenBytes)
+
+	// Store SHA-256 hash of token (never store raw tokens)
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	expiresAt := time.Now().Add(1 * time.Hour)
+	if err := h.Store.CreatePasswordResetToken(user.ID, tokenHash, expiresAt); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create reset token"})
+	}
+
+	// Build reset URL
+	baseURL := os.Getenv("FRONTEND_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+	resetURL := baseURL + "/reset-password?token=" + rawToken
+
+	go func() {
+		body := email.PasswordResetEmail(resetURL)
+		if err := email.Send(user.Email, "Reset Your Greggie Password", body); err != nil {
+			// Log but don't fail the request
+			_ = err
+		}
+	}()
+
+	return c.JSON(fiber.Map{"message": "if that email exists, a reset link has been sent"})
+}
+
+// ResetPassword validates the token and sets a new password.
+func (h *AuthHandler) ResetPassword(c *fiber.Ctx) error {
+	var req models.PasswordResetConfirm
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.Token == "" || req.NewPassword == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token and new_password are required"})
+	}
+	if len(req.NewPassword) < 8 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "password must be at least 8 characters"})
+	}
+
+	// Hash the incoming token and look it up
+	hash := sha256.Sum256([]byte(req.Token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	userID, err := h.Store.GetPasswordResetToken(tokenHash)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired token"})
+	}
+
+	// Hash the new password
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to hash password"})
+	}
+
+	if err := h.Store.UpdateUserPassword(userID, string(passwordHash)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update password"})
+	}
+
+	// Mark token as used
+	_ = h.Store.UsePasswordResetToken(tokenHash)
+
+	return c.JSON(fiber.Map{"message": "password reset successfully"})
 }

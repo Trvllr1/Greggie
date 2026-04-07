@@ -17,6 +17,7 @@ interface AuthContextValue {
   register: (email: string, username: string, password: string) => Promise<void>;
   logout: () => void;
   isLoggedIn: boolean;
+  devLoginAs: (role: 'creator' | 'admin') => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,8 +52,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  /** Instant dev-mode login — sets a synthetic user without hitting the backend */
+  const devLoginAs = useCallback((role: 'creator' | 'admin') => {
+    const synthetic: AuthUser = {
+      id: role === 'admin' ? 'dev-admin-001' : 'dev-creator-001',
+      username: role === 'admin' ? 'greggie_admin' : 'dev_creator',
+      display_name: role === 'admin' ? 'Greggie Admin' : 'Dev Creator',
+      email: role === 'admin' ? 'admin@greggie.app' : 'dev-creator@greggie.app',
+      avatar_url: '',
+      role,
+    };
+    setUser(synthetic);
+    // Set a fake token so isLoggedIn and token guards pass
+    api.setToken(`dev-${role}-token`);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isLoggedIn: !!user }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, isLoggedIn: !!user, devLoginAs }}>
       {children}
     </AuthContext.Provider>
   );

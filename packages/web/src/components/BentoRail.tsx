@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Channel, CATEGORIES } from '../data/mockData';
-import { X, Sparkles, Eye, ChevronLeft } from 'lucide-react';
+import { X, Sparkles, Eye, ChevronLeft, Radio } from 'lucide-react';
 
 type BentoRailProps = {
   channels: Channel[];
@@ -17,6 +17,10 @@ function fmtViewers(n: number) {
 }
 
 function thumbUrl(url: string) {
+  // Don't try to manipulate video URLs — they can't be displayed as images
+  if (!url || url.endsWith('.mp4') || url.endsWith('.m3u8') || url.includes('/videos/')) {
+    return '';
+  }
   return url.replace(/w=\d+/, 'w=320').replace(/h=\d+/, 'h=180');
 }
 
@@ -149,15 +153,21 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                 >
                   {/* Thumbnail — status + viewers only */}
                   <div
-                    className="relative shrink-0 overflow-hidden rounded-lg"
+                    className="relative shrink-0 overflow-hidden rounded-lg bg-white/[0.06]"
                     style={{ width: isPrimary ? 130 : 110, height: isPrimary ? 74 : 62 }}
                   >
-                    <img
-                      src={thumbUrl(channel.thumbnailUrl || channel.streamUrl)}
-                      alt=""
-                      loading="lazy"
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    />
+                    {thumbUrl(channel.thumbnailUrl || channel.streamUrl) ? (
+                      <img
+                        src={thumbUrl(channel.thumbnailUrl || channel.streamUrl)}
+                        alt=""
+                        loading="lazy"
+                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-500/20 to-purple-500/20">
+                        <Radio size={20} className="text-white/30" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 
                     {/* Status pill — top-left */}
