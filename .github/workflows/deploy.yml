@@ -1,0 +1,45 @@
+name: Deploy to OCI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "shared/migrations/**"
+      - "docker-compose.prod.yml"
+      - "infra/**"
+
+  workflow_dispatch: # manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 137.131.51.134
+          username: ubuntu
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/greggie
+
+            echo ">>> Pulling latest code..."
+            git pull origin main
+
+            echo ">>> Building and deploying..."
+            docker compose -f docker-compose.prod.yml build --no-cache backend
+            docker compose -f docker-compose.prod.yml up -d
+
+            echo ">>> Cleaning up old images..."
+            docker image prune -f
+
+            echo ">>> Checking health..."
+            sleep 5
+            curl -sf http://localhost:8080/health || echo "WARNING: health check failed"
+
+            echo ">>> Deploy complete!"

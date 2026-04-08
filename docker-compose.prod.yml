@@ -1,0 +1,85 @@
+# Greggie Production Docker Compose — OCI Free Tier (AMD Micro: 1 OCPU, 1 GB RAM)
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    expose:
+      - "8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgres://${POSTGRES_USER:-greggie}:${POSTGRES_PASSWORD:-greggie}@postgres:5432/${POSTGRES_DB:-greggie}?sslmode=disable
+      - REDIS_URL=redis:6379
+      - DB_MAX_OPEN=10
+      - DB_MAX_IDLE=3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-greggie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greggie}
+      POSTGRES_DB: ${POSTGRES_DB:-greggie}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./shared/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greggie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "max_connections=30"
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 50mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
