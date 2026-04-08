@@ -61,7 +61,7 @@ function StatusBadge({ status }: { status: string }) {
     expired: 'bg-white/5 text-white/40 border-white/10',
   };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status] ?? map.draft}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${map[status] ?? map.draft}`}>
       {status}
     </span>
   );
@@ -686,7 +686,7 @@ export function AdminPanel({ onExit }: { onExit: () => void }) {
                     <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                       <td className="px-4 py-3 text-white/70">{p.user_email || p.user_id?.slice(0, 8) || '—'}</td>
                       <td className="px-4 py-3">
-                        <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-300">
+                        <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-xs font-bold uppercase text-indigo-300">
                           {p.program_type}
                         </span>
                       </td>
@@ -786,15 +786,15 @@ export function AdminPanel({ onExit }: { onExit: () => void }) {
             {billboards.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl border border-white/10 bg-[#11131B] p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Total Impressions</p>
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">Total Impressions</p>
                   <p className="text-lg font-black text-white">{billboards.reduce((s, b) => s + (b.impressions || 0), 0).toLocaleString()}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-[#11131B] p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Total Clicks</p>
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">Total Clicks</p>
                   <p className="text-lg font-black text-white">{billboards.reduce((s, b) => s + (b.clicks || 0), 0).toLocaleString()}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-[#11131B] p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Avg CTR</p>
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">Avg CTR</p>
                   <p className="text-lg font-black text-white">
                     {(() => {
                       const imp = billboards.reduce((s, b) => s + (b.impressions || 0), 0);
@@ -804,7 +804,7 @@ export function AdminPanel({ onExit }: { onExit: () => void }) {
                   </p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-[#11131B] p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Total Spend</p>
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">Total Spend</p>
                   <p className="text-lg font-black text-white">{fmt$(billboards.reduce((s, b) => s + (b.spent_cents || 0), 0))}</p>
                 </div>
               </div>
@@ -849,7 +849,7 @@ export function AdminPanel({ onExit }: { onExit: () => void }) {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${typeColors[b.billboard_type] ?? 'bg-white/5 text-white/40'}`}>
+                          <span className={`rounded-md px-2 py-0.5 text-xs font-bold uppercase ${typeColors[b.billboard_type] ?? 'bg-white/5 text-white/40'}`}>
                             {b.billboard_type}
                           </span>
                         </td>
@@ -1064,7 +1064,7 @@ function BillboardFormModal({ initial, onSave, onClose, saving }: {
             <div>
               <label className={labelCls}>Ends At</label>
               <input type="datetime-local" value={form.ends_at} onChange={e => set('ends_at', e.target.value)} className={inputCls} />
-              <p className="text-[10px] text-white/20 mt-1">Leave empty for no end date</p>
+              <p className="text-xs text-white/20 mt-1">Leave empty for no end date</p>
             </div>
           </div>
 

@@ -216,7 +216,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] text-white"
+                        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-xs text-white"
                         style={{ backgroundColor: color }}
                       >
                         ✓

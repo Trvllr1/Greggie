@@ -79,16 +79,16 @@ export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClo
                   <div className="flex items-center gap-2 mt-1">
                     <button
                       onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
-                      className="p-0.5 rounded hover:bg-white/10 text-white/50"
+                      className="p-2 rounded hover:bg-white/10 text-white/50"
                     >
-                      <Minus size={12} />
+                      <Minus size={14} />
                     </button>
                     <span className="text-xs text-white/80 w-5 text-center">{item.quantity}</span>
                     <button
                       onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
-                      className="p-0.5 rounded hover:bg-white/10 text-white/50"
+                      className="p-2 rounded hover:bg-white/10 text-white/50"
                     >
-                      <Plus size={12} />
+                      <Plus size={14} />
                     </button>
                   </div>
                 </div>
@@ -96,7 +96,7 @@ export function CartDrawer({ items, total, onUpdateQuantity, onRemoveItem, onClo
                 {/* Remove */}
                 <button
                   onClick={() => onRemoveItem(item.product.id)}
-                  className="self-start p-1 rounded hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-colors"
+                  className="self-start p-2 rounded hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-colors"
                 >
                   <Trash2 size={14} />
                 </button>

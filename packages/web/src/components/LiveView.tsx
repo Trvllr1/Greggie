@@ -253,7 +253,7 @@ export function LiveView({
           </button>
         )}
         {isPiP && (
-          <div className="absolute top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          <div className="absolute top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">
             {channel.type}
           </div>
         )}
@@ -301,46 +301,46 @@ export function LiveView({
               {/* Home button */}
               <button
                 onClick={onGoHome}
-                className="absolute top-3 left-4 rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-colors hover:bg-white/20 z-10"
+                className="absolute top-3 left-4 rounded-full bg-white/10 p-2.5 backdrop-blur-md transition-colors hover:bg-white/20 z-10"
                 title="Back to Splash"
               >
                 <ButterflyIcon size={24} />
               </button>
               {/* Following / For You / Shop Tabs */}
-              <div className="absolute top-12 left-1/2 -translate-x-1/2 flex items-center gap-4 drop-shadow-md">
-                <button 
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-4 drop-shadow-md max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-hide">
+                <button
                   onClick={() => onChangeFeedType?.('FOLLOWING')}
-                  className={`text-lg font-bold transition-colors relative ${feedType === 'FOLLOWING' ? 'text-white' : 'text-white/60 hover:text-white'}`}
+                  className={`shrink-0 text-sm sm:text-lg font-bold transition-colors relative ${feedType === 'FOLLOWING' ? 'text-white' : 'text-white/60 hover:text-white'}`}
                 >
                   Following
                   {feedType === 'FOLLOWING' && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-1 bg-white rounded-full" />}
                 </button>
-                <div className="h-4 w-px bg-white/30" />
-                <button 
+                <div className="h-4 w-px bg-white/30 shrink-0" />
+                <button
                   onClick={() => onChangeFeedType?.('FOR_YOU')}
-                  className={`text-lg font-bold transition-colors relative ${feedType === 'FOR_YOU' ? 'text-white' : 'text-white/60 hover:text-white'}`}
+                  className={`shrink-0 text-sm sm:text-lg font-bold transition-colors relative ${feedType === 'FOR_YOU' ? 'text-white' : 'text-white/60 hover:text-white'}`}
                 >
                   For You
                   {feedType === 'FOR_YOU' && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-1 bg-white rounded-full" />}
                 </button>
-                <div className="h-4 w-px bg-white/30" />
+                <div className="h-4 w-px bg-white/30 shrink-0" />
                 <button
                   onClick={() => onGoToShop?.()}
-                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                  className="shrink-0 text-sm sm:text-lg font-bold transition-colors relative text-white/60 hover:text-white"
                 >
                   Shop
                 </button>
-                <div className="h-4 w-px bg-white/30" />
+                <div className="h-4 w-px bg-white/30 shrink-0" />
                 <button
                   onClick={() => onGoToSellerProgram?.()}
-                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                  className="shrink-0 text-sm sm:text-lg font-bold transition-colors relative text-white/60 hover:text-white"
                 >
                   Sell
                 </button>
-                <div className="h-4 w-px bg-white/30" />
+                <div className="h-4 w-px bg-white/30 shrink-0" />
                 <button
                   onClick={() => onGoToCreatorStudio?.()}
-                  className="text-lg font-bold transition-colors relative text-white/60 hover:text-white"
+                  className="shrink-0 text-sm sm:text-lg font-bold transition-colors relative text-white/60 hover:text-white"
                 >
                   Create
                 </button>
@@ -370,7 +370,7 @@ export function LiveView({
                         e.stopPropagation();
                         onToggleFollow?.(channel.id);
                       }}
-                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-colors shadow-sm ${
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider transition-colors shadow-sm ${
                         followedChannels[channel.id]
                           ? 'bg-white/20 text-white backdrop-blur-md'
                           : 'bg-indigo-600 text-white'
@@ -400,7 +400,7 @@ export function LiveView({
                       </motion.span>
                     </AnimatePresence>
                     {channel.isPrimary && (
-                      <span className="flex items-center gap-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30">
+                      <span className="flex items-center gap-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 px-2 py-0.5 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30">
                         <Sparkles size={10} />
                         SPONSORED
                       </span>
@@ -426,7 +426,7 @@ export function LiveView({
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[9px] font-bold text-white shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+                      className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[11px] font-bold text-white shadow-[0_0_6px_rgba(16,185,129,0.6)]"
                     >
                       {cartCount}
                     </motion.span>
@@ -571,7 +571,7 @@ export function LiveView({
                                 >
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="font-semibold text-indigo-200">{m.formatted_time}</span>
-                                    <span className="text-[10px] text-indigo-300/60">{Math.round(m.confidence * 100)}% match</span>
+                                    <span className="text-xs text-indigo-300/60">{Math.round(m.confidence * 100)}% match</span>
                                   </div>
                                   <p className="text-white/70 text-xs line-clamp-2">{m.transcript_chunk}</p>
                                 </button>
@@ -911,8 +911,8 @@ export function LiveView({
                                   className="flex flex-col items-center gap-1 rounded-xl bg-white/5 p-2 hover:bg-white/10 transition-colors"
                                 >
                                   <span className="text-2xl">{gift.icon}</span>
-                                  <span className="text-[10px] text-white/70">{gift.name}</span>
-                                  <span className="text-[10px] font-bold text-white">${gift.price}</span>
+                                  <span className="text-xs text-white/70">{gift.name}</span>
+                                  <span className="text-xs font-bold text-white">${gift.price}</span>
                                 </button>
                               ))}
                             </div>

@@ -89,6 +89,24 @@ func (s *Store) GetUserByEmail(email string) (*models.User, error) {
 	return u, nil
 }
 
+func (s *Store) GetUserByUsername(username string) (*models.User, error) {
+	u := &models.User{}
+	err := s.PG.QueryRow(
+		`SELECT id, username, display_name, email, password_hash, COALESCE(avatar_url, ''), role,
+		        onboarding_complete, preferred_categories,
+		        COALESCE(stripe_account_id, ''), COALESCE(stripe_onboarding_complete, false),
+		        created_at, updated_at
+		 FROM users WHERE username = $1`, username,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.AvatarURL,
+		&u.Role, &u.OnboardingComplete, pq.Array(&u.PreferredCategories),
+		&u.StripeAccountID, &u.StripeOnboardingComplete,
+		&u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
 func (s *Store) GetUserByID(id string) (*models.User, error) {
 	u := &models.User{}
 	err := s.PG.QueryRow(

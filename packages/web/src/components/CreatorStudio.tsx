@@ -697,7 +697,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
       {/* ── Header ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b border-gray-800/60 bg-[#0D0D14]">
         <div className="flex items-center gap-3">
-          <button onClick={onExit} className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-400 hover:text-white">
+          <button onClick={onExit} className="p-2.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-400 hover:text-white">
             <ArrowLeft size={18} />
           </button>
           <ButterflyIcon size={24} />
@@ -705,12 +705,12 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold truncate max-w-[200px]">{channel.title}</h1>
               {isLive && (
-                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-xs font-bold uppercase tracking-wider animate-pulse">
                   <Radio size={10} /> Live
                 </span>
               )}
               {cspStatus && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
                   {cspActive ? cspStatus.tier : getProgramStatusLabel(cspStatus.status)}
                 </span>
               )}
@@ -757,16 +757,16 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
               {cspStatus.status === 'closed' && 'Your CSP enrollment is closed. Re-enrollment is required before seller operations can resume.'}
             </span>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
             {getProgramStatusLabel(cspStatus.status)}
           </span>
         </div>
       )}
 
       {/* ── Body: Preview + Panel ── */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* ── Left: Stream Preview ── */}
-        <div className="w-[45%] flex flex-col border-r border-gray-800/60">
+        <div className="h-48 sm:h-64 lg:h-auto lg:w-[45%] flex flex-col border-b lg:border-b-0 lg:border-r border-gray-800/60">
           {/* Preview */}
           <div className="relative flex-1 bg-black overflow-hidden">
             {isLive && streamCredentials ? (
@@ -856,7 +856,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                 >
                   <div className="mb-2 space-y-1.5">
                     <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-1.5">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase w-16 flex-shrink-0">Server</span>
+                      <span className="text-xs font-bold text-gray-500 uppercase w-16 flex-shrink-0">Server</span>
                       <code className="text-xs text-indigo-300 flex-1 truncate">{streamCredentials.rtmp_url}</code>
                       <button
                         onClick={() => handleCopyToClipboard(streamCredentials.rtmp_url, 'rtmp')}
@@ -866,7 +866,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                       </button>
                     </div>
                     <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-1.5">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase w-16 flex-shrink-0">Key</span>
+                      <span className="text-xs font-bold text-gray-500 uppercase w-16 flex-shrink-0">Key</span>
                       <code className="text-xs text-indigo-300 flex-1 truncate font-mono">{streamCredentials.stream_key}</code>
                       <button
                         onClick={() => handleCopyToClipboard(streamCredentials.stream_key, 'key')}
@@ -875,7 +875,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                         {copiedField === 'key' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
                       </button>
                     </div>
-                    <p className="text-[10px] text-gray-600 text-center">Paste these into OBS → Settings → Stream</p>
+                    <p className="text-xs text-gray-600 text-center">Paste these into OBS → Settings → Stream</p>
                   </div>
                 </motion.div>
               )}
@@ -903,19 +903,19 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         {/* ── Right: Tab Panel ── */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Tab bar */}
-          <div className="flex-shrink-0 flex border-b border-gray-800/60 bg-[#0D0D14]">
+          <div className="flex-shrink-0 flex overflow-x-auto scrollbar-hide border-b border-gray-800/60 bg-[#0D0D14]">
             {tabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+                  className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
                     isActive
                       ? 'text-indigo-400 border-indigo-500 bg-indigo-500/5'
                       : 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-gray-800/30'
                   }`}>
                   <Icon size={14} />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
                   {tab.id === 'chat' && <span className="ml-1 w-2 h-2 rounded-full bg-red-500" />}
                 </button>
               );
@@ -958,12 +958,12 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                           <h3 className="text-sm font-semibold truncate">{product.name}</h3>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs font-bold text-green-400">${product.price.toFixed(2)}</span>
-                            <span className="text-[10px] text-gray-500">|</span>
-                            <span className="text-[10px] text-gray-400">{product.inventory} in stock</span>
+                            <span className="text-xs text-gray-500">|</span>
+                            <span className="text-xs text-gray-400">{product.inventory} in stock</span>
                             {product.saleType && product.saleType !== 'buy_now' && (
                               <>
-                                <span className="text-[10px] text-gray-500">|</span>
-                                <span className="text-[10px] uppercase font-bold text-indigo-400">{product.saleType === 'auction' ? 'Auction' : 'Drop'}</span>
+                                <span className="text-xs text-gray-500">|</span>
+                                <span className="text-xs uppercase font-bold text-indigo-400">{product.saleType === 'auction' ? 'Auction' : 'Drop'}</span>
                               </>
                             )}
                           </div>
@@ -971,17 +971,17 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                         <div className="flex gap-1.5 mt-2">
                           {pinnedProduct?.id === product.id ? (
                             <button onClick={handleUnpinProduct}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 text-white">
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 text-white">
                               <PinOff size={10} /> Unpin
                             </button>
                           ) : (
                             <button onClick={() => handlePinProduct(product)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">
                               <Pin size={10} /> Pin to Stream
                             </button>
                           )}
                           <button onClick={() => handleDeleteProduct(product.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-700 text-gray-400 hover:bg-red-600/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-400 hover:bg-red-600/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
                             <Trash2 size={10} /> Remove
                           </button>
                         </div>
@@ -1001,7 +1001,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                     <p className="text-[11px] text-gray-500">{chatMessages.length} messages</p>
                   </div>
                   <div className="flex gap-1">
-                    <button className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-orange-500/20 text-orange-400">
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/20 text-orange-400">
                       {chatMessages.filter(m => m.isQuestion).length} Questions
                     </button>
                   </div>
@@ -1013,19 +1013,19 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-bold text-indigo-400">{msg.user}</span>
-                        <span className="text-[10px] text-gray-600">{msg.ts}</span>
+                        <span className="text-xs text-gray-600">{msg.ts}</span>
                         {msg.isQuestion && (
-                          <span className="text-[9px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-full ml-auto">Q</span>
+                          <span className="text-[11px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-full ml-auto">Q</span>
                         )}
                       </div>
                       <p className="text-sm text-white/80">{msg.text}</p>
                       <div className="flex gap-1.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => { setPinnedQuestion({ user: msg.user, text: msg.text }); }}
-                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 transition-colors">
+                          className="px-2 py-1 rounded-md text-xs font-bold bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 transition-colors">
                           Pin to Stream
                         </button>
                         <button onClick={() => setChatMessages(prev => prev.filter(m => m.id !== msg.id))}
-                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                          className="px-2 py-1 rounded-md text-xs font-bold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
                           Delete
                         </button>
                       </div>
@@ -1048,28 +1048,28 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                   <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="p-1.5 rounded-lg bg-indigo-500/20"><Eye size={14} className="text-indigo-400" /></div>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Viewers</span>
+                      <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Viewers</span>
                     </div>
                     <p className="text-2xl font-bold">{viewers.toLocaleString()}</p>
                   </div>
                   <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="p-1.5 rounded-lg bg-green-500/20"><DollarSign size={14} className="text-green-400" /></div>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Revenue</span>
+                      <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Revenue</span>
                     </div>
                     <p className="text-2xl font-bold text-green-400">${(revenue / 100).toLocaleString()}</p>
                   </div>
                   <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="p-1.5 rounded-lg bg-pink-500/20"><Heart size={14} className="text-pink-400" /></div>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Likes</span>
+                      <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Likes</span>
                     </div>
                     <p className="text-2xl font-bold text-pink-400">{likes.toLocaleString()}</p>
                   </div>
                   <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="p-1.5 rounded-lg bg-yellow-500/20"><ButterflyIcon size={14} /></div>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Orders</span>
+                      <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Orders</span>
                     </div>
                     <p className="text-2xl font-bold">{totalOrders.toLocaleString()}</p>
                   </div>
@@ -1081,15 +1081,15 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                   <div className="grid grid-cols-3 gap-4">
                     <div className="text-center">
                       <p className="text-lg font-bold text-indigo-400">{conversionRate.toFixed(1)}%</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Conversion</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Conversion</p>
                     </div>
                     <div className="text-center">
                       <p className="text-lg font-bold">{formatTime(streamTimer)}</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Duration</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Duration</p>
                     </div>
                     <div className="text-center">
                       <p className="text-lg font-bold text-green-400">${viewers > 0 ? ((revenue / 100) / viewers).toFixed(2) : '0.00'}</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Revenue/Viewer</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Revenue/Viewer</p>
                     </div>
                   </div>
                 </div>
@@ -1108,7 +1108,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                           </div>
                           <span className="text-xs font-medium flex-1 truncate">{p.name}</span>
                           <span className="text-xs text-green-400 font-bold">${p.price.toFixed(2)}</span>
-                          <span className="text-[10px] text-gray-500">{p.inventory} left</span>
+                          <span className="text-xs text-gray-500">{p.inventory} left</span>
                         </div>
                       ))}
                     </div>
@@ -1240,7 +1240,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                       {cspStatus.status === 'approved' && 'Your application is approved and queued for activation. Revenue reporting will appear as soon as the program goes live.'}
                       {cspStatus.status !== 'pending' && cspStatus.status !== 'approved' && 'This CSP enrollment is not active right now, so revenue controls are temporarily unavailable.'}
                     </p>
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(cspStatus.status)}`}>
                       {getProgramStatusLabel(cspStatus.status)}
                     </span>
                   </div>
@@ -1269,7 +1269,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                       </div>
                       <div className="flex justify-between mt-1.5">
                         {['New', 'Rising', 'Est.', 'Partner'].map(t => (
-                          <span key={t} className="text-[9px] text-gray-500">{t}</span>
+                          <span key={t} className="text-[11px] text-gray-500">{t}</span>
                         ))}
                       </div>
                     </div>
@@ -1279,28 +1279,28 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                       <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="p-1.5 rounded-lg bg-green-500/20"><DollarSign size={14} className="text-green-400" /></div>
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Total Revenue</span>
+                          <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Total Revenue</span>
                         </div>
                         <p className="text-2xl font-bold text-green-400">${((cspDashboard?.total_revenue_cents || 0) / 100).toLocaleString()}</p>
                       </div>
                       <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="p-1.5 rounded-lg bg-indigo-500/20"><TrendingUp size={14} className="text-indigo-400" /></div>
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Commission</span>
+                          <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Commission</span>
                         </div>
                         <p className="text-2xl font-bold text-indigo-400">{cspDashboard?.commission_pct || 20}%</p>
                       </div>
                       <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="p-1.5 rounded-lg bg-yellow-500/20"><Clock size={14} className="text-yellow-400" /></div>
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Pending</span>
+                          <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Pending</span>
                         </div>
                         <p className="text-2xl font-bold text-yellow-400">${((cspDashboard?.pending_payouts_cents || 0) / 100).toLocaleString()}</p>
                       </div>
                       <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="p-1.5 rounded-lg bg-green-500/20"><Check size={14} className="text-green-400" /></div>
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Paid Out</span>
+                          <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Paid Out</span>
                         </div>
                         <p className="text-2xl font-bold">${((cspDashboard?.paid_payouts_cents || 0) / 100).toLocaleString()}</p>
                       </div>
@@ -1317,9 +1317,9 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                             <div key={p.id} className="flex items-center justify-between py-1.5 border-b border-gray-800 last:border-0">
                               <div>
                                 <span className="text-xs text-white font-medium">${(p.net_cents / 100).toFixed(2)}</span>
-                                <span className="text-[10px] text-gray-500 ml-2">gross ${(p.gross_cents / 100).toFixed(2)} - ${(p.commission_cents / 100).toFixed(2)} fee</span>
+                                <span className="text-xs text-gray-500 ml-2">gross ${(p.gross_cents / 100).toFixed(2)} - ${(p.commission_cents / 100).toFixed(2)} fee</span>
                               </div>
-                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                              <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
                                 p.payout_status === 'paid' ? 'bg-green-500/20 text-green-400' :
                                 p.payout_status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
                                 'bg-gray-700 text-gray-400'
@@ -1368,9 +1368,9 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                           <div className="flex items-center justify-between mb-2">
                             <div>
                               <span className="text-xs font-mono text-gray-400">#{order.id.slice(0, 8)}</span>
-                              <span className="text-[10px] text-gray-500 ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
+                              <span className="text-xs text-gray-500 ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
                             </div>
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
                               order.status === 'delivered' ? 'bg-green-500/20 text-green-400' :
                               order.status === 'shipped' ? 'bg-blue-500/20 text-blue-400' :
                               order.status === 'confirmed' ? 'bg-yellow-500/20 text-yellow-400' :
@@ -1382,7 +1382,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                             <span className="text-sm font-bold text-green-400">${(order.total_cents / 100).toFixed(2)}</span>
                           </div>
                           {order.buyer_email && (
-                            <p className="text-[10px] text-gray-500 mt-1">{order.buyer_email}</p>
+                            <p className="text-xs text-gray-500 mt-1">{order.buyer_email}</p>
                           )}
                           {/* Fulfillment actions */}
                           {(order.status === 'pending' || order.status === 'confirmed') && (
@@ -1393,7 +1393,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                                     await api.updateOrderFulfillment(order.id, { status: 'processing' });
                                     loadCSPOrders();
                                   }}
-                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                                  className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
                                 >
                                   Confirm Order
                                 </button>
@@ -1404,7 +1404,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                                     await api.updateOrderFulfillment(order.id, { status: 'shipped' });
                                     loadCSPOrders();
                                   }}
-                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                                  className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition-colors"
                                 >
                                   Mark Shipped
                                 </button>

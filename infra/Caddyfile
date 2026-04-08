@@ -12,6 +12,8 @@
 	}
 
 	handle {
-		respond "Greggie API is running" 200
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
 	}
 }

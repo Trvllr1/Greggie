@@ -75,6 +75,10 @@ func (h *AuthHandler) DevLogin(c *fiber.Ctx) error {
 	email := "dev-creator@greggie.app"
 	user, err := h.Store.GetUserByEmail(email)
 	if err != nil {
+		// Try by username (may exist from seed data with different email)
+		user, err = h.Store.GetUserByUsername("dev_creator")
+	}
+	if err != nil {
 		// Auto-create dev creator
 		hash, _ := bcrypt.GenerateFromPassword([]byte("dev12345"), bcrypt.DefaultCost)
 		user = &models.User{

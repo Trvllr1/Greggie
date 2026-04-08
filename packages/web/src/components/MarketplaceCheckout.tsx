@@ -308,7 +308,7 @@ export function MarketplaceCheckout({
           </div>
           <div className="flex justify-between mt-1.5">
             {CHECKOUT_STEPS.map((s, i) => (
-              <span key={s.key} className={`text-[10px] font-medium ${
+              <span key={s.key} className={`text-xs font-medium ${
                 i <= stepIndex ? 'text-indigo-400' : 'text-white/30'
               }`}>{s.label}</span>
             ))}
@@ -437,7 +437,7 @@ export function MarketplaceCheckout({
                   </button>
                 )}
 
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                   <input
                     type="text"
                     placeholder="City *"
@@ -628,15 +628,15 @@ export function MarketplaceCheckout({
               <div className="grid grid-cols-3 gap-2">
                 <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 p-2.5 border border-white/10">
                   <ShieldCheck size={14} className="text-green-400" />
-                  <span className="text-[10px] text-white/50 text-center">Buyer Protection</span>
+                  <span className="text-xs text-white/50 text-center">Buyer Protection</span>
                 </div>
                 <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 p-2.5 border border-white/10">
                   <Lock size={14} className="text-indigo-400" />
-                  <span className="text-[10px] text-white/50 text-center">256-bit SSL</span>
+                  <span className="text-xs text-white/50 text-center">256-bit SSL</span>
                 </div>
                 <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 p-2.5 border border-white/10">
                   <CreditCard size={14} className="text-yellow-400" />
-                  <span className="text-[10px] text-white/50 text-center">PCI Compliant</span>
+                  <span className="text-xs text-white/50 text-center">PCI Compliant</span>
                 </div>
               </div>
             </motion.div>

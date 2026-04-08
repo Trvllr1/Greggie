@@ -145,7 +145,7 @@ export function ShareSheet({ title, text, url, onClose }: ShareSheetProps) {
             >
               {social.icon}
             </div>
-            <span className="text-[10px] text-white/70">{social.name}</span>
+            <span className="text-xs text-white/70">{social.name}</span>
           </button>
         ))}
 
@@ -157,7 +157,7 @@ export function ShareSheet({ title, text, url, onClose }: ShareSheetProps) {
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition-transform group-hover:scale-110">
             {copied ? <Check size={20} className="text-emerald-400" /> : <Link2 size={20} />}
           </div>
-          <span className="text-[10px] text-white/70">{copied ? 'Copied!' : 'Copy'}</span>
+          <span className="text-xs text-white/70">{copied ? 'Copied!' : 'Copy'}</span>
         </button>
       </div>
     </motion.div>

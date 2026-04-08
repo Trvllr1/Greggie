@@ -435,7 +435,7 @@ export function MarketStudio({ onExit }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold">Greggie Market Studio</h1>
-              {program && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{programIsActive ? program.tier : getProgramStatusLabel(program.status)}</span>}
+              {program && <span className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{programIsActive ? program.tier : getProgramStatusLabel(program.status)}</span>}
             </div>
             <p className="text-[11px] text-white/40">Catalog commerce, fulfillment, payouts, analytics.</p>
           </div>
@@ -465,7 +465,7 @@ export function MarketStudio({ onExit }: Props) {
               {program.status === 'closed' && 'Your MSP enrollment is closed. Seller operations stay disabled until you re-enroll.'}
             </span>
           </div>
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{getProgramStatusLabel(program.status)}</span>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{getProgramStatusLabel(program.status)}</span>
         </div>
       )}
 
@@ -494,7 +494,7 @@ export function MarketStudio({ onExit }: Props) {
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${selected ? 'border-indigo-500 bg-indigo-500/5 text-indigo-300' : 'border-transparent text-white/40 hover:bg-white/5 hover:text-white/75'}`}>
                   <Icon size={14} />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
                 </button>
               );
             })}
@@ -543,7 +543,7 @@ export function MarketStudio({ onExit }: Props) {
                             <div className="text-sm font-semibold">${(payout.net_cents / 100).toFixed(2)}</div>
                             <div className="text-xs text-white/35">Gross ${(payout.gross_cents / 100).toFixed(2)} • Fee ${(payout.commission_cents / 100).toFixed(2)}</div>
                           </div>
-                          <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/55">{payout.payout_status}</span>
+                          <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white/55">{payout.payout_status}</span>
                         </div>
                       ))}
                     </div>
@@ -606,7 +606,7 @@ export function MarketStudio({ onExit }: Props) {
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-bold text-green-400">${(order.total_cents / 100).toFixed(2)}</div>
-                          <div className="mt-1 rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/50">{order.status}</div>
+                          <div className="mt-1 rounded-full bg-white/5 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white/50">{order.status}</div>
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">

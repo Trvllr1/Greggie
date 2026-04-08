@@ -51,15 +51,15 @@ function ImageGallery({ images, mainImage, name }: { images?: string[]; mainImag
           <>
             <button
               onClick={() => setIdx((idx - 1 + allImages.length) % allImages.length)}
-              className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute left-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-black/50 text-white/70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={18} />
             </button>
             <button
               onClick={() => setIdx((idx + 1) % allImages.length)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-black/50 text-white/70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={18} />
             </button>
           </>
         )}
@@ -435,7 +435,7 @@ export function ProductPage({ product, onBack, onAddToCart, onOpenCart, onViewPr
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs font-semibold text-white/70">{bundle.name}</span>
                     {bundle.discountPct > 0 && (
-                      <span className="text-[10px] rounded-full bg-green-500/20 text-green-400 px-2 py-0.5 font-bold">
+                      <span className="text-xs rounded-full bg-green-500/20 text-green-400 px-2 py-0.5 font-bold">
                         Save {bundle.discountPct}%
                       </span>
                     )}
@@ -450,7 +450,7 @@ export function ProductPage({ product, onBack, onAddToCart, onOpenCart, onViewPr
                         <div className="h-16 w-16 mx-auto rounded-lg bg-white/5 overflow-hidden">
                           <img src={item.product.mediaUrl} alt="" className="h-full w-full object-cover" />
                         </div>
-                        <p className="text-[10px] text-white/50 mt-1 line-clamp-1">{item.product.name}</p>
+                        <p className="text-xs text-white/50 mt-1 line-clamp-1">{item.product.name}</p>
                       </div>
                     ))}
                   </div>
@@ -480,7 +480,7 @@ export function ProductPage({ product, onBack, onAddToCart, onOpenCart, onViewPr
                       {(related.reviewCount ?? 0) > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <Stars rating={related.reviewAvg ?? 0} size={9} />
-                          <span className="text-[9px] text-white/30">({related.reviewCount})</span>
+                          <span className="text-[11px] text-white/30">({related.reviewCount})</span>
                         </div>
                       )}
                     </div>

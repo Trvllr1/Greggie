@@ -73,17 +73,17 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed top-0 right-0 bottom-0 z-40 flex w-[360px] flex-col
+      className="fixed top-0 right-0 bottom-0 z-40 flex w-full sm:w-[360px] flex-col
                  border-l border-white/[0.06] bg-black/80 backdrop-blur-2xl"
     >
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 pt-5 pb-3">
         <button
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full
+          className="flex h-10 w-10 items-center justify-center rounded-full
                      bg-white/[0.06] text-white/50 transition hover:bg-white/10 hover:text-white"
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={18} />
         </button>
         <div className="flex-1">
           <h2 className="text-sm font-bold tracking-wide text-white/90 uppercase">Channels</h2>
@@ -91,7 +91,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
         </div>
         <button
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full
+          className="flex h-10 w-10 items-center justify-center rounded-full
                      text-white/30 transition hover:bg-white/10 hover:text-white"
         >
           <X size={14} />
@@ -102,7 +102,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
       <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 scrollbar-hide">
         <button
           onClick={() => setSelectedCategory(null)}
-          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-all
+          className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition-all
             ${selectedCategory === null
               ? 'bg-white text-black'
               : 'bg-white/[0.06] text-white/50 hover:bg-white/10 hover:text-white/80'}`}
@@ -113,7 +113,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-all
+            className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition-all
               ${selectedCategory === cat
                 ? 'bg-white text-black'
                 : 'bg-white/[0.06] text-white/50 hover:bg-white/10 hover:text-white/80'}`}
@@ -173,7 +173,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                     {/* Status pill — top-left */}
                     <div className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 backdrop-blur-sm">
                       <span className={`h-1.5 w-1.5 rounded-full shadow-sm ${STATUS_DOT[channel.type] ?? STATUS_DOT.LIVE}`} />
-                      <span className="text-[9px] font-bold text-white uppercase tracking-wide leading-none">
+                      <span className="text-[11px] font-bold text-white uppercase tracking-wide leading-none">
                         {channel.type === 'SCHEDULED' ? 'Soon' : channel.type}
                       </span>
                     </div>
@@ -182,7 +182,7 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                     {channel.viewers > 0 && (
                       <div className="absolute bottom-1 right-1.5 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 backdrop-blur-sm">
                         <Eye size={8} className="text-white/70" />
-                        <span className="text-[9px] font-bold text-white/90 leading-none">{fmtViewers(channel.viewers)}</span>
+                        <span className="text-[11px] font-bold text-white/90 leading-none">{fmtViewers(channel.viewers)}</span>
                       </div>
                     )}
 
@@ -205,14 +205,14 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                     </h3>
                     <span className="text-[11px] text-white/40 truncate">{channel.merchant.name}</span>
                     {channel.badge && (
-                      <span className={`mt-0.5 w-fit rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-wider leading-none
+                      <span className={`mt-0.5 w-fit rounded px-1.5 py-px text-[11px] font-bold uppercase tracking-wider leading-none
                         bg-gradient-to-r ${BADGE_COLORS[channel.badge] ?? 'from-gray-500 to-gray-400'}
                         ${channel.badge === 'LUXURY' ? 'text-black' : 'text-white'}`}>
                         {channel.badge}
                       </span>
                     )}
                     {channel.products.length > 0 && (
-                      <p className="mt-0.5 text-[10px] text-white/30 truncate">
+                      <p className="mt-0.5 text-xs text-white/30 truncate">
                         {channel.products[0].name}
                         {channel.products.length > 1 && ` +${channel.products.length - 1}`}
                       </p>

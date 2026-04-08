@@ -109,13 +109,13 @@ function ProductCard({
       )}
       {product.saleType === 'auction' && (
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full
-          bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-black">
+          bg-amber-500/90 px-2 py-0.5 text-xs font-bold text-black">
           <Gavel size={10} /> Bid
         </div>
       )}
       {product.saleType === 'drop' && (
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full
-          bg-violet-500/90 px-2 py-0.5 text-[10px] font-bold text-white">
+          bg-violet-500/90 px-2 py-0.5 text-xs font-bold text-white">
           <Zap size={10} /> Drop
         </div>
       )}
@@ -138,7 +138,7 @@ function ProductCard({
         <div className="flex items-baseline gap-1.5 mt-1">
           <p className="text-sm text-white font-bold">${product.price.toFixed(2)}</p>
           {discount && (
-            <p className="text-[10px] text-white/30 line-through">${(product.price * 1.3).toFixed(2)}</p>
+            <p className="text-xs text-white/30 line-through">${(product.price * 1.3).toFixed(2)}</p>
           )}
         </div>
       </div>
@@ -184,14 +184,14 @@ function LiveChannelCard({ channel, onClick }: { channel: GatewayChannel; onClic
         )}
         {/* Live badge */}
         <div className="absolute top-2 left-2 flex items-center gap-1.5">
-          <span className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+          <span className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> Live
           </span>
         </div>
         {/* Viewer count */}
         <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-sm px-2 py-0.5">
           <Eye size={10} className="text-white/70" />
-          <span className="text-[10px] text-white/90 font-medium">
+          <span className="text-xs text-white/90 font-medium">
             {channel.viewer_count >= 1000
               ? `${(channel.viewer_count / 1000).toFixed(1)}K`
               : channel.viewer_count}
@@ -203,16 +203,16 @@ function LiveChannelCard({ channel, onClick }: { channel: GatewayChannel; onClic
       <div className="p-3">
         <p className="text-xs text-white/90 font-semibold truncate">{channel.title}</p>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[10px] text-white/40 bg-white/[0.06] rounded-full px-2 py-0.5">
+          <span className="text-xs text-white/40 bg-white/[0.06] rounded-full px-2 py-0.5">
             {channel.category}
           </span>
           {channel.sale_type === 'auction' && (
-            <span className="text-[10px] text-amber-400 bg-amber-500/10 rounded-full px-2 py-0.5">
+            <span className="text-xs text-amber-400 bg-amber-500/10 rounded-full px-2 py-0.5">
               Auction
             </span>
           )}
           {channel.sale_type === 'drop' && (
-            <span className="text-[10px] text-violet-400 bg-violet-500/10 rounded-full px-2 py-0.5">
+            <span className="text-xs text-violet-400 bg-violet-500/10 rounded-full px-2 py-0.5">
               Drop
             </span>
           )}
@@ -365,7 +365,7 @@ function BillboardHero({
               <div className="flex items-center gap-2 mb-2">
                 {/* Billboard type badge (FTC compliant) */}
                 {badgeLabel && (
-                  <span className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${badgeClass}`}>
+                  <span className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${badgeClass}`}>
                     {current.billboardType === 'trending' && (
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                     )}
@@ -456,7 +456,7 @@ function CategoryPill({
     >
       <span className="text-base">{icon}</span>
       <span>{name}</span>
-      <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${
+      <span className={`text-xs rounded-full px-1.5 py-0.5 ${
         isActive ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'
       }`}>{count}</span>
     </motion.button>
@@ -476,7 +476,7 @@ function DealCard({ product, onClick }: { product: Product; onClick: () => void 
         hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300"
     >
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-full
-        bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+        bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white">
         <Tag size={10} /> Deal
       </div>
       <div className="aspect-square w-full bg-white/5 overflow-hidden">
@@ -590,7 +590,7 @@ function SearchResults({
             >
               {product.saleType === 'auction' && (
                 <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full
-                  bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-black">
+                  bg-amber-500/90 px-2 py-0.5 text-xs font-bold text-black">
                   <Gavel size={10} /> Bid
                 </div>
               )}
@@ -918,7 +918,7 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full
-                  bg-green-500 text-[10px] font-bold text-white shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                  bg-green-500 text-xs font-bold text-white shadow-[0_0_8px_rgba(16,185,129,0.6)]"
               >
                 {cartCount}
               </motion.span>
