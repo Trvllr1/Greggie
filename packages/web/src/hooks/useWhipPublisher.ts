@@ -9,9 +9,14 @@ export function useWhipPublisher() {
   const streamRef = useRef<MediaStream | null>(null);
   const resourceUrlRef = useRef<string | null>(null);
 
-  /** Start camera/mic preview and attach to a <video> element */
-  const startPreview = useCallback(async (videoEl: HTMLVideoElement) => {
+  /** Start camera/mic preview and attach to a <video> element. Returns true on success. */
+  const startPreview = useCallback(async (videoEl: HTMLVideoElement): Promise<boolean> => {
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          'Camera requires HTTPS. Open this site with https:// or on localhost.',
+        );
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: true,
@@ -22,9 +27,11 @@ export function useWhipPublisher() {
       await videoEl.play();
       setState('previewing');
       setError(null);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Camera access denied');
       setState('error');
+      return false;
     }
   }, []);
 

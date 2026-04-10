@@ -522,9 +522,10 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         setCountdownActive(false);
         setStreamCredentials(null);
       } else {
-        // Start camera preview first
+        // Start camera preview first — must succeed before going live
         if (cameraRef.current && whip.state === 'idle') {
-          await whip.startPreview(cameraRef.current);
+          const ok = await whip.startPreview(cameraRef.current);
+          if (!ok) return; // Camera denied or failed — don't go live
         }
         // Go live on the backend (sets status to LIVE)
         const res = await api.goLive(channel.id);
@@ -782,19 +783,28 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         <div className="h-48 sm:h-64 lg:h-auto lg:w-[45%] flex flex-col border-b lg:border-b-0 lg:border-r border-gray-800/60">
           {/* Preview */}
           <div className="relative flex-1 bg-black overflow-hidden">
-            {/* Camera preview (always rendered, hidden when not streaming) */}
+            {/* Camera preview (always rendered so getUserMedia/play works) */}
             <video
               ref={cameraRef}
               playsInline
               muted
-              className={`absolute inset-0 h-full w-full object-cover ${isLive ? '' : 'hidden'}`}
+              className="absolute inset-0 h-full w-full object-cover"
               style={{ transform: 'scaleX(-1)' }}
             />
-            {!isLive && (
+            {whip.state === 'idle' && !isLive && (
               <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-gray-900 to-black">
                 <div className="text-center">
                   <Video size={48} className="mx-auto mb-3 text-gray-600" />
                   <p className="text-sm text-gray-500">Camera preview will appear when you go live</p>
+                </div>
+              </div>
+            )}
+            {whip.state === 'error' && !isLive && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-gray-900 to-black">
+                <div className="text-center">
+                  <Video size={48} className="mx-auto mb-3 text-red-500" />
+                  <p className="text-sm text-red-400">{whip.error || 'Camera access denied'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Check browser permissions and try again</p>
                 </div>
               </div>
             )}
