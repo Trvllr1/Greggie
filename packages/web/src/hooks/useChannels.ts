@@ -15,6 +15,7 @@ interface UseChannelsResult {
 /**
  * Fetches the channel rail from the backend.
  * Falls back to MOCK_CHANNELS when the backend is unreachable.
+ * Polls every 15s to pick up status changes (Go Live / End Stream).
  */
 export function useChannels(category?: string): UseChannelsResult {
   const [channels, setChannels] = useState<Channel[]>(MOCK_CHANNELS);
@@ -26,7 +27,6 @@ export function useChannels(category?: string): UseChannelsResult {
 
   const fetchChannels = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
 
       const [railData, primaryData] = await Promise.allSettled([
@@ -75,7 +75,14 @@ export function useChannels(category?: string): UseChannelsResult {
   useEffect(() => {
     mounted.current = true;
     fetchChannels();
-    return () => { mounted.current = false; };
+
+    // Poll every 15s so rail picks up Go Live / End Stream changes
+    const interval = setInterval(fetchChannels, 15_000);
+
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+    };
   }, [fetchChannels]);
 
   return { channels, primary, loading, error, usingMock, refresh: fetchChannels };

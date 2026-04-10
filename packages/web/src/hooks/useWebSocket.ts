@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { getToken } from '../services/api';
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080';
+const WS_BASE = import.meta.env.VITE_WS_URL ?? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 export type WSEvent =
   | 'channel:update'

@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"greggie/backend/internal/middleware"
 	"greggie/backend/internal/models"
 	"greggie/backend/internal/store"
+	"greggie/backend/internal/ws"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +14,7 @@ import (
 
 type CreatorHandler struct {
 	Store *store.Store
+	Hub   *ws.Hub
 }
 
 // ── Channels ──
@@ -114,19 +117,36 @@ func (h *CreatorHandler) GoLive(c *fiber.Ctx) error {
 	}
 	hlsURL := fmt.Sprintf("%s/%s/index.m3u8", hlsHost, ch.StreamKey)
 
-	// Set the stream_url to the HLS endpoint
-	if err := h.Store.SetChannelStreamURL(channelID, hlsURL); err != nil {
+	// Build WHIP URL for browser-based streaming
+	whipBase := os.Getenv("WHIP_PUBLIC_URL")
+	if whipBase == "" {
+		whipBase = "/whip"
+	}
+	whipURL := fmt.Sprintf("%s/%s/whip", whipBase, ch.StreamKey)
+
+	// Public HLS URL (via Caddy proxy)
+	publicHLS := fmt.Sprintf("/hls/%s/index.m3u8", ch.StreamKey)
+
+	// Set the stream_url to the public HLS endpoint
+	if err := h.Store.SetChannelStreamURL(channelID, publicHLS); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to set stream url"})
 	}
 	if err := h.Store.UpdateChannelStatus(channelID, "LIVE"); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to go live"})
 	}
 
+	// Broadcast rail update to all connected clients
+	if h.Hub != nil {
+		payload, _ := json.Marshal(map[string]interface{}{"channel_id": channelID, "status": "LIVE"})
+		h.Hub.BroadcastAllJSON(ws.Message{Event: ws.EventRailUpdate, Payload: payload})
+	}
+
 	return c.JSON(fiber.Map{
 		"status":     "LIVE",
 		"rtmp_url":   "rtmp://localhost:1935",
 		"stream_key": ch.StreamKey,
-		"hls_url":    hlsURL,
+		"hls_url":    publicHLS,
+		"whip_url":   whipURL,
 	})
 }
 
@@ -146,6 +166,13 @@ func (h *CreatorHandler) EndStream(c *fiber.Ctx) error {
 	if err := h.Store.UpdateChannelStatus(channelID, "OFFLINE"); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to end stream"})
 	}
+
+	// Broadcast rail update to all connected clients
+	if h.Hub != nil {
+		payload, _ := json.Marshal(map[string]interface{}{"channel_id": channelID, "status": "OFFLINE"})
+		h.Hub.BroadcastAllJSON(ws.Message{Event: ws.EventRailUpdate, Payload: payload})
+	}
+
 	return c.JSON(fiber.Map{"status": "OFFLINE"})
 }
 

@@ -89,7 +89,7 @@ UPDATE products SET search_vector = to_tsvector('english',
 -- ── User role upgrade ──
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 UPDATE users SET role = 'buyer' WHERE role = 'viewer';
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('buyer','seller','creator','admin'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('buyer','seller','creator','admin','viewer'));
 
 -- ── Carts ──
 CREATE TABLE carts (

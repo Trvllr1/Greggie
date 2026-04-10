@@ -27,6 +27,8 @@ services:
       - REDIS_URL=redis:6379
       - DB_MAX_OPEN=10
       - DB_MAX_IDLE=3
+      - HLS_PUBLIC_URL=http://mediamtx:8888
+      - WHIP_PUBLIC_URL=/whip
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,6 +39,22 @@ services:
       resources:
         limits:
           memory: 200M
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    expose:
+      - "8888"
+      - "8889"
+      - "9997"
+    ports:
+      - "1935:1935"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   postgres:
     image: postgres:16-alpine

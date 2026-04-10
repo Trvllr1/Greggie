@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../services/api';
 import { ButterflyIcon } from './ButterflyIcon';
 import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
+import { useWhipPublisher } from '../hooks/useWhipPublisher';
 
 type Tab = 'products' | 'chat' | 'analytics' | 'tools' | 'revenue' | 'orders';
 
@@ -399,8 +400,12 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [enrollingCSP, setEnrollingCSP] = useState(false);
 
   // Stream credentials state
-  const [streamCredentials, setStreamCredentials] = useState<{ rtmp_url: string; stream_key: string; hls_url: string } | null>(null);
+  const [streamCredentials, setStreamCredentials] = useState<{ rtmp_url: string; stream_key: string; hls_url: string; whip_url: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // WHIP browser streaming
+  const whip = useWhipPublisher();
+  const cameraRef = useRef<HTMLVideoElement>(null);
 
   // Engagement tools state
   const [flashSaleActive, setFlashSaleActive] = useState(false);
@@ -510,15 +515,23 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
     if (!channel) return;
     try {
       if (isLive) {
+        await whip.stop();
         await api.endStream(channel.id);
         setIsLive(false);
         setFlashSaleActive(false);
         setCountdownActive(false);
         setStreamCredentials(null);
       } else {
+        // Start camera preview first
+        if (cameraRef.current && whip.state === 'idle') {
+          await whip.startPreview(cameraRef.current);
+        }
+        // Go live on the backend (sets status to LIVE)
         const res = await api.goLive(channel.id);
         setIsLive(true);
-        setStreamCredentials({ rtmp_url: res.rtmp_url, stream_key: res.stream_key, hls_url: res.hls_url });
+        setStreamCredentials({ rtmp_url: res.rtmp_url, stream_key: res.stream_key, hls_url: res.hls_url, whip_url: res.whip_url });
+        // Publish camera to MediaMTX via WHIP
+        await whip.publish(res.whip_url);
       }
     } catch { /* ignore */ }
   };
@@ -769,19 +782,19 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         <div className="h-48 sm:h-64 lg:h-auto lg:w-[45%] flex flex-col border-b lg:border-b-0 lg:border-r border-gray-800/60">
           {/* Preview */}
           <div className="relative flex-1 bg-black overflow-hidden">
-            {isLive && streamCredentials ? (
-              <HlsPlayer
-                src={streamCredentials.hls_url}
-                muted={false}
-                className="absolute inset-0 h-full w-full object-cover"
-                onStreamReady={() => {}}
-                onStreamError={() => {}}
-              />
-            ) : (
+            {/* Camera preview (always rendered, hidden when not streaming) */}
+            <video
+              ref={cameraRef}
+              playsInline
+              muted
+              className={`absolute inset-0 h-full w-full object-cover ${isLive ? '' : 'hidden'}`}
+              style={{ transform: 'scaleX(-1)' }}
+            />
+            {!isLive && (
               <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-gray-900 to-black">
                 <div className="text-center">
                   <Video size={48} className="mx-auto mb-3 text-gray-600" />
-                  <p className="text-sm text-gray-500">Stream preview will appear here</p>
+                  <p className="text-sm text-gray-500">Camera preview will appear when you go live</p>
                 </div>
               </div>
             )}
@@ -845,37 +858,20 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
 
           {/* Stream controls */}
           <div className="flex-shrink-0 p-3 flex flex-col gap-2 bg-[#0D0D14] border-t border-gray-800/60">
-            {/* Stream Credentials (shown when live) */}
+            {/* Stream status indicator (shown when live) */}
             <AnimatePresence>
-              {isLive && streamCredentials && (
+              {isLive && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="mb-2 space-y-1.5">
-                    <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-1.5">
-                      <span className="text-xs font-bold text-gray-500 uppercase w-16 flex-shrink-0">Server</span>
-                      <code className="text-xs text-indigo-300 flex-1 truncate">{streamCredentials.rtmp_url}</code>
-                      <button
-                        onClick={() => handleCopyToClipboard(streamCredentials.rtmp_url, 'rtmp')}
-                        className="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-                      >
-                        {copiedField === 'rtmp' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-1.5">
-                      <span className="text-xs font-bold text-gray-500 uppercase w-16 flex-shrink-0">Key</span>
-                      <code className="text-xs text-indigo-300 flex-1 truncate font-mono">{streamCredentials.stream_key}</code>
-                      <button
-                        onClick={() => handleCopyToClipboard(streamCredentials.stream_key, 'key')}
-                        className="p-1 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-                      >
-                        {copiedField === 'key' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-600 text-center">Paste these into OBS → Settings → Stream</p>
+                  <div className="mb-2 flex items-center justify-center gap-2 bg-gray-800/60 rounded-lg px-3 py-1.5">
+                    <span className={`w-2 h-2 rounded-full ${whip.state === 'publishing' ? 'bg-green-400 animate-pulse' : whip.state === 'error' ? 'bg-red-400' : 'bg-yellow-400 animate-pulse'}`} />
+                    <span className="text-xs text-gray-300">
+                      {whip.state === 'publishing' ? 'Camera streaming live' : whip.state === 'error' ? (whip.error || 'Stream error') : 'Connecting...'}
+                    </span>
                   </div>
                 </motion.div>
               )}

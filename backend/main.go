@@ -114,7 +114,7 @@ func main() {
 	checkout := &handlers.CheckoutHandler{Store: db}
 	events := &handlers.EventHandler{Store: db}
 	relay := &handlers.RelayHandler{Store: db}
-	creator := &handlers.CreatorHandler{Store: db}
+	creator := &handlers.CreatorHandler{Store: db, Hub: hub}
 	connect := &handlers.ConnectHandler{Store: db}
 	webhooks := &handlers.WebhookHandler{Store: db}
 	auctionH := &handlers.AuctionHandler{Store: db, Hub: hub}

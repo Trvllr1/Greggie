@@ -106,7 +106,7 @@ export default function App() {
   const [sessionState, dispatch] = useReducer(sessionReducer, 'ENTRY_LOBBY');
   const { isLoggedIn, user } = useAuth();
   const [preferredCategory, setPreferredCategory] = useState<string | undefined>(undefined);
-  const { channels, primary, loading, error, usingMock } = useChannels(preferredCategory);
+  const { channels, primary, loading, error, usingMock, refresh: refreshChannels } = useChannels(preferredCategory);
   const [currentChannel, setCurrentChannel] = useState<Channel>(MOCK_CHANNELS[0]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [lastOrder, setLastOrder] = useState<{ id: string; status: string; total_cents: number } | null>(null);
@@ -159,6 +159,13 @@ export default function App() {
       );
     });
   }, [on]);
+
+  // Listen for rail updates (channel went LIVE or OFFLINE)
+  useEffect(() => {
+    return on('rail:update', () => {
+      refreshChannels();
+    });
+  }, [on, refreshChannels]);
 
   const handleEnterMall = () => {
     dispatch({ type: 'ENTER_MALL' });

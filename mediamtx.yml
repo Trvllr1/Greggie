@@ -28,9 +28,14 @@ api: yes
 apiAddress: :9997
 
 ###############################################
+# WHIP ingest (creators publish from browser via WebRTC)
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigins: ['*']
+
+###############################################
 # Disable protocols we don't need
 rtsp: no
-webrtc: no
 srt: no
 
 ###############################################

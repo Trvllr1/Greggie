@@ -6,7 +6,7 @@
 import type { Channel, Product } from '../data/mockData';
 
 // ── Config ──────────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 const API_PREFIX = `${API_BASE}/api/v1`;
 
 // ── Token storage ───────────────────────────────────────
@@ -530,6 +530,7 @@ export type GoLiveResponse = {
   rtmp_url: string;
   stream_key: string;
   hls_url: string;
+  whip_url: string;
 };
 
 export async function goLive(channelId: string) {

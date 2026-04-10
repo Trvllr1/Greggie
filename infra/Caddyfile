@@ -11,6 +11,17 @@
 		reverse_proxy backend:8080
 	}
 
+	handle /whip/* {
+		uri strip_prefix /whip
+		reverse_proxy mediamtx:8889
+	}
+
+	handle /hls/* {
+		uri strip_prefix /hls
+		reverse_proxy mediamtx:8888
+		header Access-Control-Allow-Origin *
+	}
+
 	handle {
 		root * /srv/web
 		try_files {path} /index.html
