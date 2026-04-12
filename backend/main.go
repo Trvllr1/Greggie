@@ -26,6 +26,8 @@ import (
 )
 
 func main() {
+	bootTime := time.Now()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -151,7 +153,7 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	// Health
+	// Health (simple)
 	api.Get("/health", func(c *fiber.Ctx) error {
 		status := fiber.Map{
 			"status":     "ok",
@@ -163,6 +165,41 @@ func main() {
 			status["db"] = err.Error()
 		}
 		return c.JSON(status)
+	})
+
+	// Healthz (deep check — for external monitoring / OCI Health Checks)
+	api.Get("/healthz", func(c *fiber.Ctx) error {
+		pgStart := time.Now()
+		pgErr, redisErr := db.PingAll()
+		pgLatency := time.Since(pgStart)
+
+		pgStatus := "ok"
+		redisStatus := "ok"
+		overall := "ok"
+		httpCode := fiber.StatusOK
+
+		if pgErr != nil {
+			pgStatus = pgErr.Error()
+			overall = "unhealthy"
+			httpCode = fiber.StatusServiceUnavailable
+		}
+		if redisErr != nil {
+			redisStatus = redisErr.Error()
+			if overall == "ok" {
+				overall = "degraded"
+			}
+		}
+
+		return c.Status(httpCode).JSON(fiber.Map{
+			"status":     overall,
+			"service":    "greggie",
+			"uptime":     time.Since(bootTime).String(),
+			"ws_clients": hub.ClientCount(),
+			"checks": fiber.Map{
+				"postgres": fiber.Map{"status": pgStatus, "latency_ms": pgLatency.Milliseconds()},
+				"redis":    fiber.Map{"status": redisStatus},
+			},
+		})
 	})
 
 	// Auth (public) — stricter rate limit: 10 req/min

@@ -405,6 +405,10 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [streamCredentials, setStreamCredentials] = useState<{ rtmp_url: string; stream_key: string; hls_url: string; whip_url: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  // Mic/Camera toggle state
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
+
   // WHIP browser streaming
   const whip = useWhipPublisher();
   const cameraRef = useRef<HTMLVideoElement>(null);
@@ -531,7 +535,9 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
         const a = await api.getChannelAnalytics(channel.id);
         setViewers(Number(a.total_viewers));
         setRevenue(a.total_revenue_cents);
-        setLikes(a.total_likes);
+        // Only update likes from analytics if it's higher — WS heart:burst
+        // provides real-time count that analytics may lag behind
+        setLikes(prev => Math.max(prev, a.total_likes));
         setTotalOrders(a.total_orders);
         setConversionRate(a.conversion_rate);
       } catch { /* ignore */ }
@@ -965,10 +971,20 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                 }`}>
                 {isLive ? <><Radio size={16} /> End Stream</> : <><Video size={16} /> Go Live</>}
               </button>
-              <button className="p-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300">
+              <button
+                onClick={() => { const on = whip.toggleAudio(); setIsMicOn(on); }}
+                disabled={!isLive}
+                className={`p-2.5 rounded-xl transition-colors disabled:opacity-30 ${isMicOn ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-red-600/20 text-red-400 hover:bg-red-600/30'}`}
+                title={isMicOn ? 'Mute mic' : 'Unmute mic'}
+              >
                 <Mic size={18} />
               </button>
-              <button className="p-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300">
+              <button
+                onClick={() => { const on = whip.toggleVideo(); setIsCamOn(on); }}
+                disabled={!isLive}
+                className={`p-2.5 rounded-xl transition-colors disabled:opacity-30 ${isCamOn ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-red-600/20 text-red-400 hover:bg-red-600/30'}`}
+                title={isCamOn ? 'Hide camera' : 'Show camera'}
+              >
                 <Video size={18} />
               </button>
             </div>

@@ -394,13 +394,13 @@ export function LiveView({
                 </button>
               </div>
 
-              <div className="flex flex-col items-center gap-1.5">
+              <div className="flex flex-col items-center gap-1.5 ml-14">
                 {/* Channel name above status */}
                 <motion.h2
                   key={channel.title}
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="font-bold text-sm leading-tight drop-shadow-md text-white/90 text-center max-w-[160px] truncate"
+                  className="font-bold text-sm leading-tight drop-shadow-md text-white/90 text-center max-w-[200px] truncate"
                 >
                   {channel.title}
                 </motion.h2>
@@ -436,7 +436,6 @@ export function LiveView({
                 </div>
                 {/* Mascot → Avatar → Username vertical stack */}
                 <div className="relative flex flex-col items-center gap-1 mt-1">
-                  <ButterflyIcon size={18} />
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(prev => !prev); }}
                     className="relative"

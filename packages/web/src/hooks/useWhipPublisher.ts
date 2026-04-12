@@ -217,5 +217,25 @@ export function useWhipPublisher() {
     setError(null);
   }, []);
 
-  return { state, error, startPreview, publish, stop };
+  /** Toggle audio mute/unmute. Returns new enabled state. */
+  const toggleAudio = useCallback((): boolean => {
+    const stream = streamRef.current;
+    if (!stream) return false;
+    const track = stream.getAudioTracks()[0];
+    if (!track) return false;
+    track.enabled = !track.enabled;
+    return track.enabled;
+  }, []);
+
+  /** Toggle video on/off. Returns new enabled state. */
+  const toggleVideo = useCallback((): boolean => {
+    const stream = streamRef.current;
+    if (!stream) return true;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return true;
+    track.enabled = !track.enabled;
+    return track.enabled;
+  }, []);
+
+  return { state, error, startPreview, publish, stop, toggleAudio, toggleVideo };
 }

@@ -60,6 +60,13 @@ func (s *Store) Ping() error {
 	return s.PG.Ping()
 }
 
+// PingAll checks both Postgres and Redis connectivity.
+func (s *Store) PingAll() (pgErr, redisErr error) {
+	pgErr = s.PG.Ping()
+	redisErr = s.RDB.Ping(s.Ctx).Err()
+	return
+}
+
 // ── Users ──
 
 func (s *Store) CreateUser(u *models.User) error {
