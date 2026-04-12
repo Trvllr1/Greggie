@@ -163,6 +163,16 @@ export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose
                         loading="lazy"
                         className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
+                    ) : channel.type === 'LIVE' ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-red-600/30 via-indigo-600/20 to-purple-600/30">
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="relative">
+                            <Radio size={22} className="text-white/60" />
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500 animate-pulse shadow-sm shadow-red-500/50" />
+                          </div>
+                          <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider">Streaming</span>
+                        </div>
+                      </div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-500/20 to-purple-500/20">
                         <Radio size={20} className="text-white/30" />

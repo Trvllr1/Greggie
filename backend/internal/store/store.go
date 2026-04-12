@@ -1193,6 +1193,38 @@ func (s *Store) GetViewers(channelID string) (int64, error) {
 	return v, err
 }
 
+// ── Live Chat History (Redis lists, capped at 100 messages, 2h TTL) ──
+
+func (s *Store) AppendChatMessage(channelID string, msgJSON []byte) {
+	key := "chat:" + channelID
+	s.RDB.RPush(s.Ctx, key, msgJSON)
+	s.RDB.LTrim(s.Ctx, key, -100, -1) // keep last 100
+	s.RDB.Expire(s.Ctx, key, 2*time.Hour)
+}
+
+func (s *Store) GetChatHistory(channelID string) ([]string, error) {
+	return s.RDB.LRange(s.Ctx, "chat:"+channelID, 0, -1).Result()
+}
+
+// ── Live Like Count (Redis counter, 2h TTL) ──
+
+func (s *Store) IncrLikes(channelID string) (int64, error) {
+	key := "likes:" + channelID
+	val, err := s.RDB.Incr(s.Ctx, key).Result()
+	if err == nil {
+		s.RDB.Expire(s.Ctx, key, 2*time.Hour)
+	}
+	return val, err
+}
+
+func (s *Store) GetLikes(channelID string) (int64, error) {
+	v, err := s.RDB.Get(s.Ctx, "likes:"+channelID).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return v, err
+}
+
 // ── Auction Engine ──
 
 // PlaceBidAtomic validates and places a bid in a single transaction.

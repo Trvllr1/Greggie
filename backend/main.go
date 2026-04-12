@@ -49,7 +49,9 @@ func main() {
 	// ── WebSocket hub ──
 	hub := ws.NewHub()
 	hub.OnJoin = func(channelID, userID string) {
-		count, _ := db.IncrViewers(channelID)
+		db.IncrViewers(channelID)
+		// Use the hub's in-memory count for accuracy (actual connected clients)
+		count := hub.ChannelClientCount(channelID)
 		payload, _ := json.Marshal(map[string]interface{}{"channel_id": channelID, "count": count})
 		hub.BroadcastJSON(channelID, ws.Message{
 			Event:     ws.EventViewerCount,
@@ -58,7 +60,8 @@ func main() {
 		})
 	}
 	hub.OnLeave = func(channelID, userID string) {
-		count, _ := db.DecrViewers(channelID)
+		db.DecrViewers(channelID)
+		count := hub.ChannelClientCount(channelID)
 		if count < 0 {
 			count = 0
 		}
@@ -69,6 +72,22 @@ func main() {
 			Payload:   payload,
 		})
 	}
+
+	// ── Chat & Like persistence callbacks ──
+	hub.OnChatMessage = func(channelID string, msgJSON []byte) {
+		db.AppendChatMessage(channelID, msgJSON)
+	}
+	hub.OnHeartBurst = func(channelID string) int64 {
+		count, _ := db.IncrLikes(channelID)
+		return count
+	}
+	hub.GetChannelState = func(channelID string) ([]string, int64, int) {
+		history, _ := db.GetChatHistory(channelID)
+		likes, _ := db.GetLikes(channelID)
+		viewers := hub.ChannelClientCount(channelID)
+		return history, likes, viewers
+	}
+
 	go hub.Run()
 
 	app := fiber.New(fiber.Config{
@@ -164,6 +183,7 @@ func main() {
 	api.Post("/auth/dev", authLimiter, auth.DevLogin)
 	api.Post("/auth/forgot-password", authLimiter, auth.ForgotPassword)
 	api.Post("/auth/reset-password", authLimiter, auth.ResetPassword)
+	api.Post("/auth/guest", authLimiter, auth.GuestRegister)
 
 	// Channels (public)
 	api.Get("/channels/primary", channels.GetPrimary)

@@ -8,6 +8,7 @@ import (
 	"greggie/backend/internal/store"
 	"greggie/backend/internal/ws"
 	"os"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -43,6 +44,15 @@ func (h *CreatorHandler) CreateChannel(c *fiber.Ctx) error {
 	}
 	if req.Title == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "title is required"})
+	}
+
+	// Limit guest users to 1 channel
+	user, err := h.Store.GetUserByID(uid)
+	if err == nil && strings.HasPrefix(user.Username, "guest_") {
+		existing, _ := h.Store.GetCreatorChannels(uid)
+		if len(existing) >= 1 {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "guest users can create only one channel"})
+		}
 	}
 
 	ch := &models.Channel{
@@ -110,22 +120,17 @@ func (h *CreatorHandler) GoLive(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "not your channel"})
 	}
 
-	// Build HLS URL from stream key
-	hlsHost := os.Getenv("HLS_PUBLIC_URL")
-	if hlsHost == "" {
-		hlsHost = "http://localhost:8888"
+	// Build absolute public origin: prefer PUBLIC_URL env, fall back to proxy headers.
+	publicOrigin := strings.TrimRight(os.Getenv("PUBLIC_URL"), "/")
+	if publicOrigin == "" {
+		scheme := c.Get("X-Forwarded-Proto", c.Protocol())
+		host := c.Get("X-Forwarded-Host", c.Hostname())
+		publicOrigin = fmt.Sprintf("%s://%s", scheme, host)
 	}
-	hlsURL := fmt.Sprintf("%s/%s/index.m3u8", hlsHost, ch.StreamKey)
-
-	// Build WHIP URL for browser-based streaming
-	whipBase := os.Getenv("WHIP_PUBLIC_URL")
-	if whipBase == "" {
-		whipBase = "/whip"
-	}
-	whipURL := fmt.Sprintf("%s/%s/whip", whipBase, ch.StreamKey)
+	whipURL := fmt.Sprintf("%s/whip/%s/whip", publicOrigin, ch.StreamKey)
 
 	// Public HLS URL (via Caddy proxy)
-	publicHLS := fmt.Sprintf("/hls/%s/index.m3u8", ch.StreamKey)
+	publicHLS := fmt.Sprintf("%s/hls/%s/index.m3u8", publicOrigin, ch.StreamKey)
 
 	// Set the stream_url to the public HLS endpoint
 	if err := h.Store.SetChannelStreamURL(channelID, publicHLS); err != nil {

@@ -6,11 +6,13 @@ import {
   Edit3, Pin, PinOff, TrendingUp, Eye, ArrowLeft,
   Clock, Tag, Image, ChevronDown, Send, Flame, Gift, Radio, Copy, Check,
 } from 'lucide-react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as api from '../services/api';
 import { ButterflyIcon } from './ButterflyIcon';
 import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
 import { useWhipPublisher } from '../hooks/useWhipPublisher';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { useAuth } from '../hooks/useAuth';
 
 type Tab = 'products' | 'chat' | 'analytics' | 'tools' | 'revenue' | 'orders';
 
@@ -413,18 +415,18 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [countdownActive, setCountdownActive] = useState(false);
   const [countdownTimer, setCountdownTimer] = useState(0);
 
-  const [chatMessages, setChatMessages] = useState([
-    { id: '1', user: 'Alex', text: 'This looks amazing!', isQuestion: false, ts: '2s ago' },
-    { id: '2', user: 'Sam', text: 'Is there a warranty?', isQuestion: true, ts: '5s ago' },
-    { id: '3', user: 'Jordan', text: 'Just bought one 🚀', isQuestion: false, ts: '12s ago' },
-    { id: '4', user: 'Taylor', text: 'Does it come in black?', isQuestion: true, ts: '18s ago' },
-    { id: '5', user: 'Morgan', text: 'The quality looks incredible', isQuestion: false, ts: '25s ago' },
-    { id: '6', user: 'Casey', text: 'What sizes are available?', isQuestion: true, ts: '30s ago' },
-  ]);
+  const [chatMessages, setChatMessages] = useState<{ id: string; user: string; text: string; isQuestion: boolean; ts: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+
+  // WebSocket: subscribe to channel and listen for real-time events
+  const { subscribe: wsSubscribe, sendChat, on: wsOn } = useWebSocket();
+  const { user } = useAuth();
+  const displayName = useMemo(() => api.getDisplayName(user), [user]);
 
   const ensureAuth = async () => {
     if (api.getToken()) return;
-    await api.devLogin();
+    // Auto-register as guest creator for rapid testing
+    await api.guestRegister();
   };
 
   const loadData = useCallback(async () => {
@@ -453,6 +455,73 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Subscribe to channel WebSocket room for real-time events
+  useEffect(() => {
+    if (channel) wsSubscribe(channel.id);
+  }, [channel, wsSubscribe]);
+
+  // Hydrate state from channel:state snapshot (chat history, likes, viewers)
+  useEffect(() => {
+    return wsOn('channel:state', (msg) => {
+      try {
+        const data = msg.payload as { channel_id: string; chat_history: string[]; likes: number; viewers: number };
+        if (channel && data.channel_id !== channel.id) return;
+        if (data.viewers > 0) setViewers(data.viewers);
+        if (data.likes > 0) setLikes(data.likes);
+        if (data.chat_history?.length > 0) {
+          const hydrated: typeof chatMessages = [];
+          for (const raw of data.chat_history) {
+            try {
+              const frame = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              const payload = typeof frame.payload === 'string' ? JSON.parse(frame.payload) : frame.payload;
+              const text = payload.text ?? '';
+              hydrated.push({
+                id: Math.random().toString(36),
+                user: payload.user ?? 'Viewer',
+                text,
+                isQuestion: text.endsWith('?'),
+                ts: '',
+              });
+            } catch { /* skip */ }
+          }
+          if (hydrated.length > 0) setChatMessages(hydrated);
+        }
+      } catch { /* ignore */ }
+    });
+  }, [wsOn, channel]);
+
+  // Listen for real-time chat messages
+  useEffect(() => {
+    return wsOn('chat:message', (msg) => {
+      try {
+        const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;
+        const text = data.text ?? '';
+        setChatMessages(prev => [
+          ...prev,
+          { id: Date.now().toString(), user: data.user ?? 'Viewer', text, isQuestion: text.endsWith('?'), ts: 'now' },
+        ]);
+      } catch { /* ignore */ }
+    });
+  }, [wsOn]);
+
+  // Listen for real-time viewer count
+  useEffect(() => {
+    return wsOn('viewer:count', (msg) => {
+      const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;
+      if (channel && data.channel_id === channel.id && data.count != null) {
+        setViewers(data.count);
+      }
+    });
+  }, [wsOn, channel]);
+
+  // Listen for real-time heart bursts
+  useEffect(() => {
+    return wsOn('heart:burst', (msg) => {
+      const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;
+      if (data.count != null) setLikes(data.count);
+    });
+  }, [wsOn]);
 
   // Poll analytics while live
   useEffect(() => {
@@ -1012,14 +1081,21 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                     </button>
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+                <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-2">
+                  {chatMessages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                      <MessageCircle size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                      <p className="text-sm font-medium">No messages yet</p>
+                      <p className="text-xs text-gray-600 mt-1">{isLive ? 'Viewers will chat here' : 'Go live to start chatting'}</p>
+                    </div>
+                  )}
                   {chatMessages.map(msg => (
                     <div key={msg.id} className={`rounded-xl p-3 border transition-colors group ${
                       msg.isQuestion ? 'bg-orange-500/5 border-orange-500/20' : 'bg-gray-800/30 border-gray-800'
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-bold text-indigo-400">{msg.user}</span>
-                        <span className="text-xs text-gray-600">{msg.ts}</span>
+                        {msg.ts && <span className="text-xs text-gray-600">{msg.ts}</span>}
                         {msg.isQuestion && (
                           <span className="text-[11px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-full ml-auto">Q</span>
                         )}
@@ -1037,6 +1113,31 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                       </div>
                     </div>
                   ))}
+                </div>
+                {/* Chat send input */}
+                <div className="flex-shrink-0 px-4 py-3 border-t border-gray-800/60">
+                  <form className="flex gap-2" onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!chatInput.trim() || !channel) return;
+                    sendChat(channel.id, chatInput.trim(), displayName);
+                    setChatInput('');
+                  }}>
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder={isLive ? 'Message your viewers...' : 'Go live to chat...'}
+                      disabled={!isLive}
+                      className="flex-1 bg-gray-800/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!isLive || !chatInput.trim()}
+                      className="p-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-30"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </form>
                 </div>
               </div>
             )}

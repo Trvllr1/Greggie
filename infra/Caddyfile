@@ -1,11 +1,22 @@
-:443 {
+{
+	default_sni 137.131.51.134
+}
+
+https://137.131.51.134 {
 	tls internal
+	log {
+		output stdout
+		format console
+	}
 
 	handle /api/* {
 		reverse_proxy backend:8080
 	}
 
-	handle /ws/* {
+	@websocket {
+		path /ws /ws/*
+	}
+	handle @websocket {
 		reverse_proxy backend:8080
 	}
 
@@ -14,8 +25,20 @@
 	}
 
 	handle /whip/* {
+		@options method OPTIONS
+		handle @options {
+			header Access-Control-Allow-Origin *
+			header Access-Control-Allow-Methods "POST, DELETE, OPTIONS, PATCH"
+			header Access-Control-Allow-Headers "Content-Type, Authorization"
+			header Access-Control-Expose-Headers "Location, Link"
+			respond 204
+		}
 		uri strip_prefix /whip
 		reverse_proxy mediamtx:8889
+		header Access-Control-Allow-Origin *
+		header Access-Control-Allow-Methods "POST, DELETE, OPTIONS, PATCH"
+		header Access-Control-Allow-Headers "Content-Type, Authorization"
+		header Access-Control-Expose-Headers "Location, Link"
 	}
 
 	handle /hls/* {
@@ -28,6 +51,9 @@
 		root * /srv/web
 		try_files {path} /index.html
 		file_server
+
+		@html path / /index.html
+		header @html Cache-Control "no-cache, no-store, must-revalidate"
 	}
 }
 

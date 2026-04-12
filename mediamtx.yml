@@ -16,10 +16,9 @@ rtmpAddress: :1935
 hls: yes
 hlsAddress: :8888
 hlsAllowOrigins: ['*']
-hlsVariant: lowLatency
-hlsSegmentCount: 3
-hlsSegmentDuration: 500ms
-hlsPartDuration: 100ms
+hlsVariant: fmp4
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
 hlsSegmentMaxSize: 50M
 
 ###############################################
@@ -32,6 +31,8 @@ apiAddress: :9997
 webrtc: yes
 webrtcAddress: :8889
 webrtcAllowOrigins: ['*']
+webrtcAdditionalHosts: [137.131.51.134]
+webrtcLocalUDPAddress: :8189
 
 ###############################################
 # Disable protocols we don't need

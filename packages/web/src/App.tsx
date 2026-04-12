@@ -1,4 +1,4 @@
-import { useReducer, useState, useEffect, useCallback } from 'react';
+import { useReducer, useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Splash } from './components/Splash';
 import { LiveView } from './components/LiveView';
@@ -120,9 +120,13 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const cart = useCart();
 
-  // Sync current channel to primary when data loads
+  // Set current channel to primary only on initial load (not on every poll)
+  const initialPrimarySet = useRef(false);
   useEffect(() => {
-    if (primary) setCurrentChannel(primary);
+    if (primary && !initialPrimarySet.current) {
+      setCurrentChannel(primary);
+      initialPrimarySet.current = true;
+    }
   }, [primary]);
 
   // Hydrate followed channels from backend on login

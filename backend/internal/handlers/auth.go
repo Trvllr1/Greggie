@@ -100,6 +100,63 @@ func (h *AuthHandler) DevLogin(c *fiber.Ctx) error {
 	return c.JSON(models.AuthResponse{Token: token, User: *user})
 }
 
+// GuestRegister creates or returns an existing guest user for rapid testing.
+// Each device (guest_id) gets one creator account. No password required.
+func (h *AuthHandler) GuestRegister(c *fiber.Ctx) error {
+	var req struct {
+		GuestID   string `json:"guest_id"`
+		GuestName string `json:"guest_name"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.GuestID == "" || req.GuestName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "guest_id and guest_name are required"})
+	}
+
+	// Deterministic username from device-scoped guest_id
+	username := "guest_" + req.GuestID
+	email := username + "@guest.greggie.local"
+
+	// Try to find existing guest user
+	existing, err := h.Store.GetUserByUsername(username)
+	if err == nil {
+		// Already exists — issue a fresh token
+		token, err := middleware.GenerateToken(existing.ID, existing.Role)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate token"})
+		}
+		return c.JSON(models.AuthResponse{Token: token, User: *existing})
+	}
+
+	// Create new guest user with creator role
+	hash, _ := bcrypt.GenerateFromPassword([]byte("guest-nologin-"+req.GuestID), bcrypt.DefaultCost)
+	user := &models.User{
+		Username:     username,
+		DisplayName:  req.GuestName,
+		Email:        email,
+		PasswordHash: string(hash),
+		Role:         "creator",
+	}
+	if err := h.Store.CreateUser(user); err != nil {
+		if isDuplicateKey(err) {
+			// Race condition — try fetching again
+			existing, err := h.Store.GetUserByUsername(username)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "guest creation race"})
+			}
+			token, _ := middleware.GenerateToken(existing.ID, existing.Role)
+			return c.JSON(models.AuthResponse{Token: token, User: *existing})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create guest user"})
+	}
+
+	_ = h.Store.CreateWallet(user.ID)
+
+	token, err := middleware.GenerateToken(user.ID, user.Role)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate token"})
+	}
+	return c.Status(fiber.StatusCreated).JSON(models.AuthResponse{Token: token, User: *user})
+}
+
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req models.LoginRequest
 	if err := c.BodyParser(&req); err != nil {

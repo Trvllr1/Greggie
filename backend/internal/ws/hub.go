@@ -17,6 +17,8 @@ const (
 	EventCheckoutStatus = "checkout:status"
 	EventViewerCount    = "viewer:count"
 	EventChatMessage    = "chat:message"
+	EventHeartBurst     = "heart:burst"
+	EventChannelState   = "channel:state"
 	EventBidUpdate      = "bid:update"
 	EventAuctionEnd     = "auction:end"
 )
@@ -65,6 +67,7 @@ func (c *Client) readPump() {
 		}
 		var msg Message
 		if json.Unmarshal(raw, &msg) != nil {
+			log.Printf("ws: failed to unmarshal message: %s", string(raw))
 			continue
 		}
 		// Handle client subscribe message
@@ -72,9 +75,56 @@ func (c *Client) readPump() {
 			c.hub.switchChannel(c, msg.ChannelID)
 			continue
 		}
-		// Chat messages: broadcast to same channel
+		// Chat messages: enrich with sender identity, then broadcast to channel
 		if msg.Event == EventChatMessage && msg.ChannelID != "" {
-			c.hub.BroadcastToChannel(msg.ChannelID, raw)
+			var payload map[string]interface{}
+			if json.Unmarshal(msg.Payload, &payload) == nil {
+				if c.userID != "" {
+					payload["user_id"] = c.userID
+				}
+				if _, ok := payload["user"]; !ok && c.userID != "" {
+					payload["user"] = c.userID
+				}
+				enriched, _ := json.Marshal(payload)
+				msg.Payload = enriched
+			} else {
+				// Payload might be a double-encoded string — try unwrapping
+				var s string
+				if json.Unmarshal(msg.Payload, &s) == nil {
+					if json.Unmarshal([]byte(s), &payload) == nil {
+						if c.userID != "" {
+							payload["user_id"] = c.userID
+						}
+						if _, ok := payload["user"]; !ok && c.userID != "" {
+							payload["user"] = c.userID
+						}
+						enriched, _ := json.Marshal(payload)
+						msg.Payload = enriched
+					}
+				}
+			}
+			out, _ := json.Marshal(msg)
+			// Persist to Redis
+			if c.hub.OnChatMessage != nil {
+				c.hub.OnChatMessage(msg.ChannelID, out)
+			}
+			log.Printf("ws: chat broadcast to channel=%s room_size=%d", msg.ChannelID, c.hub.ChannelClientCount(msg.ChannelID))
+			c.hub.BroadcastToChannel(msg.ChannelID, out)
+			continue
+		}
+		// Heart bursts: increment persistent count, broadcast to channel
+		if msg.Event == EventHeartBurst && msg.ChannelID != "" {
+			var totalLikes int64
+			if c.hub.OnHeartBurst != nil {
+				totalLikes = c.hub.OnHeartBurst(msg.ChannelID)
+			}
+			// Enrich payload with total likes count
+			outPayload, _ := json.Marshal(map[string]interface{}{"count": totalLikes})
+			outMsg := Message{Event: EventHeartBurst, ChannelID: msg.ChannelID, Payload: outPayload}
+			out, _ := json.Marshal(outMsg)
+			log.Printf("ws: heart broadcast to channel=%s room_size=%d total_likes=%d", msg.ChannelID, c.hub.ChannelClientCount(msg.ChannelID), totalLikes)
+			c.hub.BroadcastToChannel(msg.ChannelID, out)
+			continue
 		}
 	}
 }
@@ -117,6 +167,11 @@ type Hub struct {
 	// Callback when a client joins/leaves a channel. Used by main to update viewer counts.
 	OnJoin  func(channelID, userID string)
 	OnLeave func(channelID, userID string)
+
+	// Storage callbacks — wired by main.go to persist chat/likes in Redis
+	OnChatMessage func(channelID string, msgJSON []byte)            // store chat message
+	OnHeartBurst  func(channelID string) int64                      // increment likes, return new count
+	GetChannelState func(channelID string) (chatHistory []string, likes int64, viewers int) // fetch state for new joiner
 }
 
 func NewHub() *Hub {
@@ -202,6 +257,25 @@ func (h *Hub) switchChannel(c *Client, newChannelID string) {
 	}
 	if h.OnJoin != nil {
 		go h.OnJoin(newChannelID, c.userID)
+	}
+
+	// Send channel state snapshot to the joining client
+	if h.GetChannelState != nil {
+		go func() {
+			chatHistory, likes, viewers := h.GetChannelState(newChannelID)
+			payload, _ := json.Marshal(map[string]interface{}{
+				"channel_id":   newChannelID,
+				"chat_history": chatHistory, // raw JSON strings
+				"likes":        likes,
+				"viewers":      viewers,
+			})
+			msg := Message{Event: EventChannelState, ChannelID: newChannelID, Payload: payload}
+			data, _ := json.Marshal(msg)
+			select {
+			case c.send <- data:
+			default:
+			}
+		}()
 	}
 }
 

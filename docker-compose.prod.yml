@@ -28,7 +28,7 @@ services:
       - DB_MAX_OPEN=10
       - DB_MAX_IDLE=3
       - HLS_PUBLIC_URL=http://mediamtx:8888
-      - WHIP_PUBLIC_URL=/whip
+      - PUBLIC_URL=https://137.131.51.134
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +50,7 @@ services:
       - "9997"
     ports:
       - "1935:1935"
+      - "8189:8189/udp"
     restart: unless-stopped
     deploy:
       resources:

@@ -7,6 +7,7 @@ on:
       - "backend/**"
       - "shared/migrations/**"
       - "docker-compose.prod.yml"
+      - "docker-compose.arm.yml"
       - "infra/**"
 
   workflow_dispatch: # manual trigger
@@ -20,7 +21,8 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: 137.131.51.134
+          # OCI_HOST defaults to AMD instance; update to ARM IP when you migrate
+          host: ${{ vars.OCI_HOST || '137.131.51.134' }}
           username: ubuntu
           key: ${{ secrets.OCI_SSH_KEY }}
           script_stop: true
@@ -31,9 +33,17 @@ jobs:
             echo ">>> Pulling latest code..."
             git pull origin main
 
+            # Detect architecture and pick compose files
+            ARCH=$(uname -m)
+            COMPOSE_CMD="docker compose -f docker-compose.prod.yml"
+            if [ "$ARCH" = "aarch64" ]; then
+              echo ">>> ARM instance detected — using ARM overrides"
+              COMPOSE_CMD="$COMPOSE_CMD -f docker-compose.arm.yml"
+            fi
+
             echo ">>> Building and deploying..."
-            docker compose -f docker-compose.prod.yml build --no-cache backend
-            docker compose -f docker-compose.prod.yml up -d
+            $COMPOSE_CMD build --no-cache backend
+            $COMPOSE_CMD up -d
 
             echo ">>> Cleaning up old images..."
             docker image prune -f
@@ -42,4 +52,4 @@ jobs:
             sleep 5
             curl -sf http://localhost:8080/health || echo "WARNING: health check failed"
 
-            echo ">>> Deploy complete!"
+            echo ">>> Deploy complete! (arch: $ARCH)"

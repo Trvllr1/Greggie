@@ -24,6 +24,7 @@ export function useChannels(category?: string): UseChannelsResult {
   const [error, setError] = useState<string | null>(null);
   const [usingMock, setUsingMock] = useState(true);
   const mounted = useRef(true);
+  const primaryIdRef = useRef<string | null>(null);
 
   const fetchChannels = useCallback(async () => {
     try {
@@ -46,25 +47,39 @@ export function useChannels(category?: string): UseChannelsResult {
             isPrimary: ch.id === primaryId,
           }));
           setChannels(mapped);
-          if (primaryData.status === 'fulfilled') {
+          // Only update primary if the ID actually changed
+          if (primaryData.status === 'fulfilled' && primaryData.value.id !== primaryIdRef.current) {
+            primaryIdRef.current = primaryData.value.id;
             setPrimary({ ...primaryData.value, isPrimary: true });
           }
         } else {
           // Backend returned empty — fall back to mocks for display but don't show "unreachable"
           setChannels(MOCK_CHANNELS);
-          setPrimary(MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0]);
+          const fallback = MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0];
+          if (fallback.id !== primaryIdRef.current) {
+            primaryIdRef.current = fallback.id;
+            setPrimary(fallback);
+          }
         }
       } else {
         // Backend truly unreachable — network error
         setChannels(MOCK_CHANNELS);
-        setPrimary(MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0]);
+        const fallback = MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0];
+        if (fallback.id !== primaryIdRef.current) {
+          primaryIdRef.current = fallback.id;
+          setPrimary(fallback);
+        }
         setUsingMock(true);
         setError(railData.reason?.message ?? 'Failed to load channels');
       }
     } catch (err) {
       if (!mounted.current) return;
       setChannels(MOCK_CHANNELS);
-      setPrimary(MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0]);
+      const fallback = MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0];
+      if (fallback.id !== primaryIdRef.current) {
+        primaryIdRef.current = fallback.id;
+        setPrimary(fallback);
+      }
       setUsingMock(true);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

@@ -337,6 +337,17 @@ export async function devLogin() {
   return res;
 }
 
+export async function guestRegister() {
+  const guestId = getGuestId();
+  const guestName = getGuestName();
+  const res = await apiFetch<ApiAuthResponse>('/auth/guest', {
+    method: 'POST',
+    body: JSON.stringify({ guest_id: guestId, guest_name: guestName }),
+  });
+  setToken(res.token);
+  return res;
+}
+
 export async function getMe() {
   return apiFetch<ApiAuthResponse['user']>('/users/me');
 }
@@ -1364,4 +1375,42 @@ export async function adminUpdateBillboard(id: string, data: Partial<{
 
 export async function adminDeleteBillboard(id: string) {
   return apiFetch<void>(`/admin/billboards/${id}`, { method: 'DELETE' });
+}
+
+// ── Guest Identity ─────────────────────────────────────
+// Every visitor gets a persistent anonymous identity so they can chat and
+// be counted as a viewer without signing up.
+
+const GUEST_ADJECTIVES = ['Swift', 'Bold', 'Chill', 'Lucky', 'Neon', 'Vivid', 'Sleek', 'Fizzy', 'Zen', 'Dope'];
+const GUEST_NOUNS = ['Panda', 'Falcon', 'Fox', 'Tiger', 'Otter', 'Phoenix', 'Wolf', 'Lynx', 'Hare', 'Raven'];
+
+function generateGuestName(): string {
+  const adj = GUEST_ADJECTIVES[Math.floor(Math.random() * GUEST_ADJECTIVES.length)];
+  const noun = GUEST_NOUNS[Math.floor(Math.random() * GUEST_NOUNS.length)];
+  const num = Math.floor(Math.random() * 100);
+  return `${adj}${noun}${num}`;
+}
+
+export function getGuestId(): string {
+  let id = localStorage.getItem('greggie_guest_id');
+  if (!id) {
+    id = 'guest-' + crypto.randomUUID();
+    localStorage.setItem('greggie_guest_id', id);
+  }
+  return id;
+}
+
+export function getGuestName(): string {
+  let name = localStorage.getItem('greggie_guest_name');
+  if (!name) {
+    name = generateGuestName();
+    localStorage.setItem('greggie_guest_name', name);
+  }
+  return name;
+}
+
+/** Returns the display name to use in chat — logged-in username or guest name */
+export function getDisplayName(user: { username?: string; display_name?: string } | null): string {
+  if (user) return user.display_name || user.username || 'User';
+  return getGuestName();
 }

@@ -5,8 +5,9 @@ import { ButterflyIcon } from './ButterflyIcon';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ShareSheet } from './ShareSheet';
 import { Countdown } from './Countdown';
-import { searchRelay, type RelayMatch } from '../services/api';
+import { searchRelay, getDisplayName, type RelayMatch } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useAuth } from '../hooks/useAuth';
 import { HlsPlayer, type HlsPlayerHandle } from './HlsPlayer';
 
 type LiveViewProps = {
@@ -65,25 +66,57 @@ export function LiveView({
   const [relayMatches, setRelayMatches] = useState<RelayMatch[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
-  const [messages, setMessages] = useState<LiveMessage[]>([
-    { id: '1', user: 'Alex', text: 'This looks amazing!' },
-    { id: '2', user: 'Sam', text: 'Is there a warranty?' },
-    { id: '3', user: 'Jordan', text: 'Just bought one 🚀' },
-  ]);
+  const [messages, setMessages] = useState<LiveMessage[]>([]);
   const [hearts, setHearts] = useState<{ id: number; x: number }[]>([]);
-  const [likeCount, setLikeCount] = useState(12000);
+  const [likeCount, setLikeCount] = useState(0);
   
   // Gifting & Q&A state
   const [showGiftMenu, setShowGiftMenu] = useState(false);
   const [activeGifts, setActiveGifts] = useState<{id: number, gift: {name: string, icon: string, price: number}}[]>([]);
   const [isAskMode, setIsAskMode] = useState(false);
   const [reminderSet, setReminderSet] = useState<Record<string, boolean>>({});
-  const [pinnedQuestion, setPinnedQuestion] = useState<{user: string, text: string} | null>({
-    user: 'Sam', text: 'Is there a warranty?'
-  });
+  const [pinnedQuestion, setPinnedQuestion] = useState<{user: string, text: string} | null>(null);
 
   // WebSocket: subscribe to channel and listen for incoming chat messages
-  const { sendChat, on: wsOn } = useWebSocket();
+  const { sendChat, sendHeart, on: wsOn } = useWebSocket();
+  const { user } = useAuth();
+  const displayName = useMemo(() => getDisplayName(user), [user]);
+
+  // Clear messages when switching channels
+  useEffect(() => {
+    setMessages([]);
+    setLikeCount(0);
+  }, [channel.id]);
+
+  // Hydrate state when joining a channel (chat history, likes, viewer count)
+  useEffect(() => {
+    return wsOn('channel:state', (msg) => {
+      try {
+        const data = msg.payload as { channel_id: string; chat_history: string[]; likes: number; viewers: number };
+        if (data.channel_id !== channel.id) return;
+
+        // Hydrate likes
+        if (data.likes > 0) setLikeCount(data.likes);
+
+        // Hydrate chat history — each entry is a raw JSON chat:message WS frame
+        if (data.chat_history?.length > 0) {
+          const hydrated: LiveMessage[] = [];
+          for (const raw of data.chat_history) {
+            try {
+              const frame = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              const payload = typeof frame.payload === 'string' ? JSON.parse(frame.payload) : frame.payload;
+              hydrated.push({
+                id: Math.random().toString(36),
+                user: payload.user ?? 'Viewer',
+                text: payload.text,
+              });
+            } catch { /* skip malformed */ }
+          }
+          if (hydrated.length > 0) setMessages(hydrated);
+        }
+      } catch { /* ignore */ }
+    });
+  }, [wsOn, channel.id]);
 
   useEffect(() => {
     return wsOn('chat:message', (msg) => {
@@ -94,6 +127,26 @@ export function LiveView({
           { id: Date.now().toString(), user: data.user ?? 'Viewer', text: data.text },
         ]);
       } catch { /* ignore malformed */ }
+    });
+  }, [wsOn]);
+
+  // Listen for heart bursts — update total count from server
+  useEffect(() => {
+    return wsOn('heart:burst', (msg) => {
+      const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;
+      if (data.count != null) {
+        setLikeCount(data.count);
+      } else {
+        setLikeCount(prev => prev + 1);
+      }
+      const newHeart = {
+        id: Date.now() + Math.random(),
+        x: (Math.random() - 0.5) * 60,
+      };
+      setHearts(prev => [...prev, newHeart]);
+      setTimeout(() => {
+        setHearts(prev => prev.filter(h => h.id !== newHeart.id));
+      }, 2000);
     });
   }, [wsOn]);
 
@@ -115,7 +168,7 @@ export function LiveView({
     
     setMessages(prev => [
       ...prev,
-      { id: Date.now().toString(), user: 'You', text: `Sent a ${gift.name} ${gift.icon}`, isSystem: true }
+      { id: Date.now().toString(), user: displayName, text: `Sent a ${gift.name} ${gift.icon}`, isSystem: true }
     ]);
 
     setTimeout(() => {
@@ -140,19 +193,8 @@ export function LiveView({
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setLikeCount(prev => prev + 1);
-    
-    const newHeart = {
-      id: Date.now() + Math.random(),
-      x: (Math.random() - 0.5) * 60, // Random X offset between -30 and +30
-    };
-    
-    setHearts(prev => [...prev, newHeart]);
-    
-    // Remove heart after animation
-    setTimeout(() => {
-      setHearts(prev => prev.filter(h => h.id !== newHeart.id));
-    }, 2000);
+    // Broadcast heart to all viewers via WebSocket
+    sendHeart(channel.id, displayName);
   };
 
   const formatCount = (count: number) => {
@@ -175,6 +217,7 @@ export function LiveView({
 
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(true);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -184,6 +227,11 @@ export function LiveView({
   const [showUnmuteHint, setShowUnmuteHint] = useState(true);
 
   const isHlsStream = channel.streamUrl?.includes('.m3u8') || /\.(mp4|webm|ogg)(\?|$)/i.test(channel.streamUrl ?? '');
+
+  // Close avatar menu when switching channels
+  useEffect(() => {
+    setShowAvatarMenu(false);
+  }, [channel.id]);
 
   const handleMouseActivity = () => {
     setShowControls(true);
@@ -346,69 +394,108 @@ export function LiveView({
                 </button>
               </div>
 
-              <div className="flex items-center gap-3">
-                <motion.img 
-                  key={channel.merchant.avatar}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  src={channel.merchant.avatar} 
-                  alt={channel.merchant.name} 
-                  className="h-11 w-11 rounded-full border-2 border-white/30 shadow-lg object-cover" 
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <motion.h2 
-                      key={channel.merchant.name}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="font-bold text-lg leading-tight drop-shadow-md"
-                    >
-                      {channel.merchant.name}
-                    </motion.h2>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleFollow?.(channel.id);
-                      }}
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider transition-colors shadow-sm ${
-                        followedChannels[channel.id]
-                          ? 'bg-white/20 text-white backdrop-blur-md'
-                          : 'bg-indigo-600 text-white'
+              <div className="flex flex-col items-center gap-1.5">
+                {/* Channel name above status */}
+                <motion.h2
+                  key={channel.title}
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="font-bold text-sm leading-tight drop-shadow-md text-white/90 text-center max-w-[160px] truncate"
+                >
+                  {channel.title}
+                </motion.h2>
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={channel.type}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.2 }}
+                      className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-white shadow-sm ${
+                        channel.type === 'LIVE' ? 'bg-red-600' : channel.type === 'SCHEDULED' ? 'bg-gray-600' : 'bg-indigo-600'
                       }`}
                     >
-                      {followedChannels[channel.id] ? 'Following' : 'Follow'}
-                    </button>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs font-medium">
-                    <AnimatePresence mode="wait">
-                      <motion.span 
-                        key={channel.type}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ duration: 0.2 }}
-                        className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-white shadow-sm ${
-                          channel.type === 'LIVE' ? 'bg-red-600' : channel.type === 'SCHEDULED' ? 'bg-gray-600' : 'bg-indigo-600'
-                        }`}
+                      {channel.type === 'LIVE' ? (
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                      ) : (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+                      )}
+                      <span className="tracking-wide font-bold">{channel.type === 'SCHEDULED' ? 'UPCOMING' : channel.type}</span>
+                    </motion.span>
+                  </AnimatePresence>
+                  {channel.isPrimary && (
+                    <span className="flex items-center gap-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 px-2 py-0.5 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30">
+                      <Sparkles size={10} />
+                      SPONSORED
+                    </span>
+                  )}
+                  {channel.type !== 'SCHEDULED' && (
+                    <span className="text-white/90 drop-shadow-sm font-semibold">{channel.viewers.toLocaleString()} viewers</span>
+                  )}
+                </div>
+                {/* Mascot → Avatar → Username vertical stack */}
+                <div className="relative flex flex-col items-center gap-1 mt-1">
+                  <ButterflyIcon size={18} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(prev => !prev); }}
+                    className="relative"
+                  >
+                    <motion.img
+                      key={channel.merchant.avatar}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      src={channel.merchant.avatar}
+                      alt={channel.merchant.name}
+                      className="h-12 w-12 rounded-full border-2 border-white/30 shadow-lg object-cover hover:border-indigo-400 transition-colors"
+                    />
+                  </button>
+                  <span className="text-xs font-bold text-white drop-shadow-md text-center max-w-[100px] truncate">{channel.merchant.name}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFollow?.(channel.id);
+                    }}
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider transition-colors shadow-sm ${
+                      followedChannels[channel.id]
+                        ? 'bg-white/20 text-white backdrop-blur-md'
+                        : 'bg-indigo-600 text-white'
+                    }`}
+                  >
+                    {followedChannels[channel.id] ? 'Following' : 'Follow'}
+                  </button>
+                  {/* Avatar dropdown menu */}
+                  <AnimatePresence>
+                    {showAvatarMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute top-full mt-2 w-44 bg-black/90 backdrop-blur-xl rounded-xl border border-white/10 shadow-2xl overflow-hidden z-50"
                       >
-                        {channel.type === 'LIVE' ? (
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                        ) : (
-                          <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
-                        )}
-                        <span className="tracking-wide font-bold">{channel.type === 'SCHEDULED' ? 'UPCOMING' : channel.type}</span>
-                      </motion.span>
-                    </AnimatePresence>
-                    {channel.isPrimary && (
-                      <span className="flex items-center gap-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 px-2 py-0.5 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30">
-                        <Sparkles size={10} />
-                        SPONSORED
-                      </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(false); onOpenProfile(); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/90 hover:bg-white/10 transition-colors"
+                        >
+                          <User size={16} className="text-indigo-400" />
+                          <span className="font-medium">Profile</span>
+                        </button>
+                        <div className="mx-3 h-px bg-white/[0.06]" />
+                        <div className="flex items-center gap-3 px-4 py-3 text-sm text-white/70">
+                          <Bell size={16} className="text-amber-400" />
+                          <span className="font-medium">Subscribers</span>
+                          <span className="ml-auto text-xs font-bold text-white/50">—</span>
+                        </div>
+                        <div className="mx-3 h-px bg-white/[0.06]" />
+                        <div className="flex items-center gap-3 px-4 py-3 text-sm text-white/70">
+                          <BellRing size={16} className="text-emerald-400" />
+                          <span className="font-medium">Followers</span>
+                          <span className="ml-auto text-xs font-bold text-white/50">—</span>
+                        </div>
+                      </motion.div>
                     )}
-                    {channel.type !== 'SCHEDULED' && (
-                      <span className="text-white/90 drop-shadow-sm font-semibold">{channel.viewers.toLocaleString()} viewers</span>
-                    )}
-                  </div>
+                  </AnimatePresence>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -760,7 +847,7 @@ export function LiveView({
                     <div className="rounded-full bg-black/40 p-3 backdrop-blur-md">
                       <MessageCircle size={24} className="text-white" />
                     </div>
-                    <span className="text-xs font-medium">842</span>
+                    <span className="text-xs font-medium">{messages.length || ''}</span>
                   </button>
                   <div className="relative">
                     <button onClick={() => setShowShareSheet(s => !s)} className="flex flex-col items-center gap-1">
@@ -921,23 +1008,15 @@ export function LiveView({
                       </AnimatePresence>
 
                       <div className="border-t border-white/10 p-4 pb-8 relative">
-                        <form 
+                        <form
                           onSubmit={(e) => {
                             e.preventDefault();
                             if (!chatMessage.trim()) return;
-                            
-                            const newMsg = { 
-                              id: Date.now().toString(), 
-                              user: 'You', 
-                              text: chatMessage,
-                              isQuestion: isAskMode
-                            };
-                            
-                            setMessages(prev => [...prev, newMsg]);
-                            sendChat(channel.id, chatMessage);
-                            
+
+                            sendChat(channel.id, chatMessage, displayName);
+
                             if (isAskMode) {
-                              setPinnedQuestion({ user: 'You', text: chatMessage });
+                              setPinnedQuestion({ user: displayName, text: chatMessage });
                               setIsAskMode(false);
                             }
                             

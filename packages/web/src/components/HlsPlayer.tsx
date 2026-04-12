@@ -60,9 +60,11 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, HlsPlayerProps>(
       if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
-          lowLatencyMode: true,
+          lowLatencyMode: false,
           liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 6,
+          liveMaxLatencyDurationCount: 10,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
         });
         hlsRef.current = hls;
         hls.loadSource(src);

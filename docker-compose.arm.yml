@@ -1,0 +1,53 @@
+# Greggie ARM Override — OCI Free Tier (Ampere A1.Flex: 4 OCPU, 24 GB RAM)
+# Usage: docker compose -f docker-compose.prod.yml -f docker-compose.arm.yml up -d
+#
+# This override lifts the tight memory limits from the AMD micro config
+# and tunes services to take advantage of the ARM instance's resources.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      # Ensure multi-arch build works — Go compiles natively for arm64
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    environment:
+      - DB_MAX_OPEN=50
+      - DB_MAX_IDLE=10
+
+  mediamtx:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "effective_cache_size=8GB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+
+  redis:
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 768M
