@@ -51,6 +51,8 @@ export function LiveView({
   onGoToSellerProgram,
   onGoToCreatorStudio
 }: LiveViewProps) {
+  const isVOD = channel.type === 'VOD';
+
   type LiveMessage = {
     id: string;
     user: string;
@@ -301,7 +303,9 @@ export function LiveView({
           </button>
         )}
         {isPiP && (
-          <div className="absolute top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">
+          <div className={`absolute top-2 left-2 rounded px-1.5 py-0.5 text-xs font-bold text-white ${
+            channel.type === 'LIVE' ? 'bg-red-600' : channel.type === 'VOD' ? 'bg-purple-600' : channel.type === 'SCHEDULED' ? 'bg-gray-600' : 'bg-indigo-600'
+          }`}>
             {channel.type}
           </div>
         )}
@@ -413,7 +417,7 @@ export function LiveView({
                       exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ duration: 0.2 }}
                       className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-white shadow-sm ${
-                        channel.type === 'LIVE' ? 'bg-red-600' : channel.type === 'SCHEDULED' ? 'bg-gray-600' : 'bg-indigo-600'
+                        channel.type === 'LIVE' ? 'bg-red-600' : channel.type === 'SCHEDULED' ? 'bg-gray-600' : channel.type === 'VOD' ? 'bg-purple-600' : 'bg-indigo-600'
                       }`}
                     >
                       {channel.type === 'LIVE' ? (
@@ -808,6 +812,7 @@ export function LiveView({
                 {/* Right Actions */}
                 <div className="absolute bottom-32 right-4 flex flex-col gap-6 pointer-events-auto">
                   {/* Floating Hearts Container */}
+                  {!isVOD && (
                   <div className="absolute bottom-full right-0 mb-4 w-12 h-64 pointer-events-none z-50 flex justify-center">
                     <AnimatePresence>
                       {hearts.map((heart) => (
@@ -829,7 +834,9 @@ export function LiveView({
                       ))}
                     </AnimatePresence>
                   </div>
+                  )}
 
+                  {!isVOD && (
                   <button onClick={handleLike} className="flex flex-col items-center gap-1">
                     <motion.div 
                       whileTap={{ scale: 0.8 }}
@@ -839,6 +846,8 @@ export function LiveView({
                     </motion.div>
                     <span className="text-xs font-medium">{formatCount(likeCount)}</span>
                   </button>
+                  )}
+                  {!isVOD && (
                   <button 
                     onClick={() => setIsChatOpen(true)}
                     className="flex flex-col items-center gap-1"
@@ -848,6 +857,7 @@ export function LiveView({
                     </div>
                     <span className="text-xs font-medium">{messages.length || ''}</span>
                   </button>
+                  )}
                   <div className="relative">
                     <button onClick={() => setShowShareSheet(s => !s)} className="flex flex-col items-center gap-1">
                       <div className="rounded-full bg-black/40 p-3 backdrop-blur-md">
@@ -909,7 +919,8 @@ export function LiveView({
                   </div>
                 </div>
 
-                {/* Chat Interface */}
+                {/* Chat Interface (hidden for VOD) */}
+                {!isVOD && (
                 <AnimatePresence>
                   {isChatOpen && (
                     <motion.div
@@ -1066,6 +1077,7 @@ export function LiveView({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                )}
               </>
             )}
             </motion.div>

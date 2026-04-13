@@ -106,7 +106,7 @@ export type Product = {
 export type Channel = {
   id: string;
   title: string;
-  type: 'LIVE' | 'RELAY' | 'SCHEDULED';
+  type: 'LIVE' | 'RELAY' | 'SCHEDULED' | 'VOD';
   streamUrl: string;
   thumbnailUrl?: string;
   viewers: number;
@@ -119,6 +119,7 @@ export type Channel = {
     avatar: string;
   };
   scheduledStartTime?: string;
+  _feedItemType?: 'channel' | 'video';
 };
 
 // Thematic stock video streams (Mixkit, free, no auth)

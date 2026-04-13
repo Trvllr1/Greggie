@@ -1206,7 +1206,7 @@ export async function resetPassword(token: string, newPassword: string) {
 // ── Uploads (S3 presigned) ──────────────────────────────────
 
 export interface PresignRequest {
-  entity_type: 'product' | 'channel' | 'user' | 'shop';
+  entity_type: 'product' | 'channel' | 'user' | 'shop' | 'video';
   entity_id: string;
   filename: string;
   content_type: string;
@@ -1258,7 +1258,161 @@ export async function uploadFile(
   return public_url;
 }
 
-// ── Admin ───────────────────────────────────────────────────
+// ── Videos / VOD ────────────────────────────────────────────
+
+export interface ApiVideo {
+  id: string;
+  channel_id: string;
+  creator_id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  thumbnail_url: string;
+  duration_sec: number;
+  file_size_bytes: number;
+  status: 'processing' | 'ready' | 'failed';
+  view_count: number;
+  like_count: number;
+  created_at: string;
+  updated_at: string;
+  merchant?: ApiMerchant;
+  channel_title?: string;
+  products?: ApiProduct[];
+}
+
+export interface ApiFeedItem {
+  item_type: 'channel' | 'video';
+  channel?: ApiChannel;
+  video?: ApiVideo;
+}
+
+export interface Video {
+  id: string;
+  channelId: string;
+  creatorId: string;
+  title: string;
+  description: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  durationSec: number;
+  fileSizeBytes: number;
+  status: 'processing' | 'ready' | 'failed';
+  viewCount: number;
+  likeCount: number;
+  createdAt: string;
+  updatedAt: string;
+  merchant?: { name: string; avatar: string };
+  channelTitle?: string;
+  products?: Product[];
+}
+
+function mapVideo(v: ApiVideo): Video {
+  return {
+    id: v.id,
+    channelId: v.channel_id,
+    creatorId: v.creator_id,
+    title: v.title,
+    description: v.description,
+    videoUrl: v.video_url,
+    thumbnailUrl: v.thumbnail_url,
+    durationSec: v.duration_sec,
+    fileSizeBytes: v.file_size_bytes,
+    status: v.status,
+    viewCount: v.view_count,
+    likeCount: v.like_count,
+    createdAt: v.created_at,
+    updatedAt: v.updated_at,
+    merchant: v.merchant ? { name: v.merchant.name, avatar: v.merchant.avatar ?? '' } : undefined,
+    channelTitle: v.channel_title,
+    products: (v.products ?? []).map(mapProduct),
+  };
+}
+
+function mapFeedItemToChannel(item: ApiFeedItem): Channel {
+  if (item.item_type === 'channel' && item.channel) {
+    return { ...mapChannel(item.channel), _feedItemType: 'channel' };
+  }
+  const v = item.video!;
+  return {
+    id: v.id,
+    title: v.title,
+    type: 'VOD',
+    streamUrl: v.video_url,
+    thumbnailUrl: v.thumbnail_url,
+    viewers: v.view_count,
+    category: '',
+    merchant: {
+      name: v.merchant?.name ?? 'Unknown',
+      avatar: v.merchant?.avatar ?? '',
+    },
+    products: (v.products ?? []).map(mapProduct),
+    _feedItemType: 'video',
+  };
+}
+
+export async function getUnifiedFeed(category?: string, limit?: number): Promise<Channel[]> {
+  const qs = new URLSearchParams();
+  if (category) qs.set('category', category);
+  if (limit) qs.set('limit', String(limit));
+  const items = await apiFetch<ApiFeedItem[]>(`/feed?${qs.toString()}`);
+  return items.map(mapFeedItemToChannel);
+}
+
+export async function getVideo(id: string): Promise<Video> {
+  const v = await apiFetch<ApiVideo>(`/videos/${id}`);
+  return mapVideo(v);
+}
+
+export async function getChannelVideos(channelId: string, limit = 20, offset = 0): Promise<Video[]> {
+  const items = await apiFetch<ApiVideo[]>(`/channels/${channelId}/videos?limit=${limit}&offset=${offset}`);
+  return items.map(mapVideo);
+}
+
+export async function createVideo(channelId: string, data: {
+  title: string;
+  description?: string;
+  video_url: string;
+  thumbnail_url?: string;
+  duration_sec?: number;
+  file_size_bytes?: number;
+  product_ids?: string[];
+}): Promise<Video> {
+  const v = await apiFetch<ApiVideo>(`/creator/channels/${channelId}/videos`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return mapVideo(v);
+}
+
+export async function getMyChannelVideos(channelId: string): Promise<Video[]> {
+  const items = await apiFetch<ApiVideo[]>(`/creator/channels/${channelId}/videos`);
+  return items.map(mapVideo);
+}
+
+export async function updateVideo(videoId: string, data: {
+  title?: string;
+  description?: string;
+  thumbnail_url?: string;
+  status?: string;
+}): Promise<Video> {
+  const v = await apiFetch<ApiVideo>(`/creator/videos/${videoId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return mapVideo(v);
+}
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  await apiFetch<unknown>(`/creator/videos/${videoId}`, { method: 'DELETE' });
+}
+
+export async function setVideoProducts(videoId: string, productIds: string[]): Promise<Video> {
+  const v = await apiFetch<ApiVideo>(`/creator/videos/${videoId}/products`, {
+    method: 'PUT',
+    body: JSON.stringify({ product_ids: productIds }),
+  });
+  return mapVideo(v);
+}
 
 export interface AdminStats {
   total_users: number;

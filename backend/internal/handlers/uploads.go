@@ -28,9 +28,9 @@ func (h *UploadHandler) PresignUpload(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "filename, content_type, and entity_type are required"})
 	}
 
-	validTypes := map[string]bool{"product": true, "channel": true, "user": true, "shop": true}
+	validTypes := map[string]bool{"product": true, "channel": true, "user": true, "shop": true, "video": true}
 	if !validTypes[req.EntityType] {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "entity_type must be product, channel, user, or shop"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "entity_type must be product, channel, user, shop, or video"})
 	}
 
 	// Validate content type (images + video only)

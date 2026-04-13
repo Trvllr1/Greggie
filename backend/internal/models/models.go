@@ -729,6 +729,59 @@ type PresignResponse struct {
 	PublicURL string `json:"public_url"`
 }
 
+// ── Videos / VOD ─────────────────────────────────────────────
+
+type Video struct {
+	ID            string    `json:"id"`
+	ChannelID     string    `json:"channel_id"`
+	CreatorID     string    `json:"creator_id"`
+	Title         string    `json:"title"`
+	Description   string    `json:"description"`
+	VideoURL      string    `json:"video_url"`
+	ThumbnailURL  string    `json:"thumbnail_url"`
+	DurationSec   int       `json:"duration_sec"`
+	FileSizeBytes int64     `json:"file_size_bytes"`
+	Status        string    `json:"status"` // processing, ready, failed
+	ViewCount     int       `json:"view_count"`
+	LikeCount     int       `json:"like_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	// Joined fields
+	Merchant     *Merchant `json:"merchant,omitempty"`
+	ChannelTitle string    `json:"channel_title,omitempty"`
+	Products     []Product `json:"products,omitempty"`
+}
+
+type CreateVideoRequest struct {
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	VideoURL      string   `json:"video_url"`
+	ThumbnailURL  string   `json:"thumbnail_url"`
+	DurationSec   int      `json:"duration_sec"`
+	FileSizeBytes int64    `json:"file_size_bytes"`
+	ProductIDs    []string `json:"product_ids,omitempty"`
+}
+
+type UpdateVideoRequest struct {
+	Title        *string `json:"title,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	ThumbnailURL *string `json:"thumbnail_url,omitempty"`
+	Status       *string `json:"status,omitempty"`
+}
+
+type FeedItem struct {
+	ItemType string   `json:"item_type"` // "channel" or "video"
+	Channel  *Channel `json:"channel,omitempty"`
+	Video    *Video   `json:"video,omitempty"`
+}
+
+type CreatorProfileResponse struct {
+	User     User      `json:"user"`
+	Channels []Channel `json:"channels"`
+	Videos   []Video   `json:"videos"`
+	Shop     *Shop     `json:"shop,omitempty"`
+}
+
 // ── M14: Admin ────────────────────────────────────────────────
 
 type AdminStats struct {

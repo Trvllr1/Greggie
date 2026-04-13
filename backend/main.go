@@ -145,6 +145,7 @@ func main() {
 	sellerProg := &handlers.SellerProgramHandler{Store: db}
 	admin := &handlers.AdminHandler{Store: db}
 	uploads := &handlers.UploadHandler{Store: db}
+	videos := &handlers.VideoHandler{Store: db}
 	billboard := &handlers.BillboardHandler{Store: db}
 
 	// ── Auction engine (auto-ends expired auctions) ──
@@ -255,6 +256,11 @@ func main() {
 	api.Post("/billboards/:id/impression", billboard.TrackImpression)
 	api.Post("/billboards/:id/click", billboard.TrackClick)
 
+	// Videos & Feed (public)
+	api.Get("/feed", videos.GetUnifiedFeed)
+	api.Get("/videos/:id", videos.GetVideo)
+	api.Get("/channels/:id/videos", videos.GetChannelVideos)
+
 	// Shops (public)
 	api.Get("/shops/:slug", shop.GetShopBySlug)
 
@@ -339,6 +345,13 @@ func main() {
 	protected.Delete("/creator/channels/:id/products/:productId", creator.DeleteProduct)
 	protected.Post("/creator/channels/:id/pin", creator.PinProduct)
 	protected.Get("/creator/channels/:id/analytics", creator.GetAnalytics)
+
+	// Creator video management
+	protected.Post("/creator/channels/:id/videos", videos.CreateVideo)
+	protected.Get("/creator/channels/:id/videos", videos.GetMyChannelVideos)
+	protected.Put("/creator/videos/:videoId", videos.UpdateVideo)
+	protected.Delete("/creator/videos/:videoId", videos.DeleteVideo)
+	protected.Put("/creator/videos/:videoId/products", videos.SetVideoProducts)
 
 	// Seller Programs (auth required) — specific paths before parameterized
 	protected.Post("/programs/enroll", sellerProg.EnrollProgram)

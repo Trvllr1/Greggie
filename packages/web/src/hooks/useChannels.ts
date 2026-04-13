@@ -30,30 +30,29 @@ export function useChannels(category?: string): UseChannelsResult {
     try {
       setError(null);
 
-      const [railData, primaryData] = await Promise.allSettled([
-        api.getRail(category),
+      // Unified feed returns both live channels and VOD videos as Channel-shaped objects
+      const [feedData, primaryData] = await Promise.allSettled([
+        api.getUnifiedFeed(category),
         api.getPrimaryChannel(),
       ]);
 
       if (!mounted.current) return;
 
-      if (railData.status === 'fulfilled') {
-        // Backend is reachable — use real data (even if empty)
+      if (feedData.status === 'fulfilled') {
         setUsingMock(false);
-        if (railData.value.length > 0) {
+        if (feedData.value.length > 0) {
           const primaryId = primaryData.status === 'fulfilled' ? primaryData.value.id : null;
-          const mapped = railData.value.map(ch => ({
+          const mapped = feedData.value.map(ch => ({
             ...ch,
             isPrimary: ch.id === primaryId,
           }));
           setChannels(mapped);
-          // Only update primary if the ID actually changed
           if (primaryData.status === 'fulfilled' && primaryData.value.id !== primaryIdRef.current) {
             primaryIdRef.current = primaryData.value.id;
             setPrimary({ ...primaryData.value, isPrimary: true });
           }
         } else {
-          // Backend returned empty — fall back to mocks for display but don't show "unreachable"
+          // Backend returned empty — fall back to mocks
           setChannels(MOCK_CHANNELS);
           const fallback = MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0];
           if (fallback.id !== primaryIdRef.current) {
@@ -62,7 +61,7 @@ export function useChannels(category?: string): UseChannelsResult {
           }
         }
       } else {
-        // Backend truly unreachable — network error
+        // Backend unreachable — fall back to mocks
         setChannels(MOCK_CHANNELS);
         const fallback = MOCK_CHANNELS.find(c => c.isPrimary) ?? MOCK_CHANNELS[0];
         if (fallback.id !== primaryIdRef.current) {
@@ -70,7 +69,7 @@ export function useChannels(category?: string): UseChannelsResult {
           setPrimary(fallback);
         }
         setUsingMock(true);
-        setError(railData.reason?.message ?? 'Failed to load channels');
+        setError(feedData.reason?.message ?? 'Failed to load channels');
       }
     } catch (err) {
       if (!mounted.current) return;

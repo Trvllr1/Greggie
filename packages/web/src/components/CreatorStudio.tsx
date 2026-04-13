@@ -5,6 +5,7 @@ import {
   Gavel, Timer, HelpCircle, Plus, Settings, BarChart3, Zap, Trash2,
   Edit3, Pin, PinOff, TrendingUp, Eye, ArrowLeft,
   Clock, Tag, Image, ChevronDown, Send, Flame, Gift, Radio, Copy, Check,
+  Upload, Film,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as api from '../services/api';
@@ -14,7 +15,7 @@ import { useWhipPublisher } from '../hooks/useWhipPublisher';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useAuth } from '../hooks/useAuth';
 
-type Tab = 'products' | 'chat' | 'analytics' | 'tools' | 'revenue' | 'orders';
+type Tab = 'products' | 'videos' | 'chat' | 'analytics' | 'tools' | 'revenue' | 'orders';
 
 type CreatorStudioProps = {
   onExit: () => void;
@@ -371,6 +372,192 @@ function CSPEnrollmentModal({
   );
 }
 
+/* ── Video Upload Modal ─────────────────────────────── */
+function VideoUploadModal({ channelId, products, onClose, onUploaded }: {
+  channelId: string;
+  products: Product[];
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (f: File) => {
+    setFile(f);
+    // Extract duration via hidden video element
+    const url = URL.createObjectURL(f);
+    const vid = document.createElement('video');
+    vid.preload = 'metadata';
+    vid.onloadedmetadata = () => {
+      setDuration(Math.round(vid.duration));
+      URL.revokeObjectURL(url);
+    };
+    vid.src = url;
+  };
+
+  const handleUpload = async () => {
+    if (!file || !title.trim()) return;
+    setUploading(true);
+    try {
+      // 1. Presign
+      const presign = await api.presignUpload({
+        entity_type: 'video',
+        entity_id: channelId,
+        filename: file.name,
+        content_type: file.type,
+      });
+
+      // 2. XHR upload to S3 with progress
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.open('PUT', presign.upload_url);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.send(file);
+      });
+
+      // 3. Complete upload
+      await api.completeUpload(presign.upload_id);
+
+      // 4. Create video record
+      await api.createVideo(channelId, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        video_url: presign.public_url,
+        duration_sec: duration,
+        file_size_bytes: file.size,
+        product_ids: selectedProducts.length > 0 ? selectedProducts : undefined,
+      });
+
+      onUploaded();
+    } catch (err) {
+      console.error('Video upload failed:', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const toggleProduct = (id: string) => {
+    setSelectedProducts(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md bg-gray-900 rounded-2xl border border-gray-700 p-6 mx-4 max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-white">Upload Video</h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-800 text-gray-400"><X size={18} /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Video Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Summer Collection Lookbook"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Description</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="Describe your video..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Video File</label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="video/mp4,video/webm"
+              onChange={e => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+              className="hidden"
+            />
+            {file ? (
+              <div className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3">
+                <Film size={20} className="text-indigo-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white truncate">{file.name}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {(file.size / 1048576).toFixed(1)} MB
+                    {duration > 0 && ` · ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`}
+                  </p>
+                </div>
+                <button onClick={() => { setFile(null); setDuration(0); if (fileRef.current) fileRef.current.value = ''; }} className="text-gray-500 hover:text-white"><X size={14} /></button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="w-full h-24 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:border-indigo-500 hover:text-indigo-400 transition-colors"
+              >
+                <Upload size={24} className="mb-1" />
+                <span className="text-xs">Click to select video (MP4 or WebM)</span>
+              </button>
+            )}
+          </div>
+          {products.length > 0 && (
+            <div>
+              <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Link Products ({selectedProducts.length})</label>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {products.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => toggleProduct(p.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-sm transition-colors ${
+                      selectedProducts.includes(p.id) ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    {p.mediaUrl && <img src={p.mediaUrl} alt="" className="w-6 h-6 rounded object-cover" />}
+                    <span className="truncate flex-1">{p.name}</span>
+                    <span className="text-xs text-gray-500">${p.price.toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {uploading && (
+            <div>
+              <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                <span>Uploading...</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-400 bg-gray-800 hover:bg-gray-700 transition-colors">Cancel</button>
+          <button
+            disabled={!file || !title.trim() || uploading}
+            onClick={handleUpload}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 transition-colors"
+          >{uploading ? `Uploading ${progress}%` : 'Upload'}</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 /* ── Main Creator Studio ─────────────────────────────── */
 export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -400,6 +587,11 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   const [cspPayouts, setCspPayouts] = useState<api.SellerPayout[]>([]);
   const [showCSPEnroll, setShowCSPEnroll] = useState(false);
   const [enrollingCSP, setEnrollingCSP] = useState(false);
+
+  // Video state
+  const [videos, setVideos] = useState<api.Video[]>([]);
+  const [showUploadVideo, setShowUploadVideo] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   // Stream credentials state
   const [streamCredentials, setStreamCredentials] = useState<{ rtmp_url: string; stream_key: string; hls_url: string; whip_url: string } | null>(null);
@@ -738,6 +930,19 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
     if (activeTab === 'orders') loadCSPOrders();
   }, [activeTab, loadCSPDashboard, loadCSPOrders, loadCSPPayouts]);
 
+  // Load videos when switching to videos tab
+  const loadVideos = useCallback(async () => {
+    if (!channel) return;
+    try {
+      const v = await api.getMyChannelVideos(channel.id);
+      setVideos(v);
+    } catch { /* ignore */ }
+  }, [channel]);
+
+  useEffect(() => {
+    if (activeTab === 'videos') loadVideos();
+  }, [activeTab, loadVideos]);
+
   const cspActive = cspStatus?.status === 'active';
 
   /* ── Loading ── */
@@ -773,6 +978,7 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
   /* ── Tabs for right panel ── */
   const tabs: { id: Tab; label: string; icon: typeof Package }[] = [
     { id: 'products', label: 'Products', icon: Package },
+    { id: 'videos', label: 'Videos', icon: Film },
     { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'tools', label: 'Tools', icon: Zap },
@@ -1155,6 +1361,67 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
                     </button>
                   </form>
                 </div>
+              </div>
+            )}
+
+            {/* ── Videos Tab ── */}
+            {activeTab === 'videos' && (
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold">Videos ({videos.length})</h2>
+                    <p className="text-[11px] text-gray-500">Upload and manage VOD content</p>
+                  </div>
+                  <button
+                    onClick={() => setShowUploadVideo(true)}
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors"
+                  >
+                    <Upload size={14} /> Upload
+                  </button>
+                </div>
+                {videos.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                    <Film size={40} strokeWidth={1} className="mb-3 text-gray-600" />
+                    <p className="text-sm font-medium">No videos yet</p>
+                    <p className="text-xs text-gray-600 mt-1">Upload your first video to start building your VOD library</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {videos.map(v => (
+                      <div key={v.id} className="bg-gray-800/40 rounded-xl p-3 border border-gray-800 flex gap-3">
+                        {v.thumbnailUrl ? (
+                          <img src={v.thumbnailUrl} alt={v.title} className="w-24 h-16 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-24 h-16 rounded-lg bg-gray-700 flex items-center justify-center flex-shrink-0">
+                            <Film size={20} className="text-gray-500" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-semibold truncate">{v.title}</h3>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400">
+                            <span className={`font-bold uppercase ${
+                              v.status === 'ready' ? 'text-green-400' : v.status === 'processing' ? 'text-yellow-400' : 'text-red-400'
+                            }`}>{v.status}</span>
+                            <span className="flex items-center gap-0.5"><Eye size={11} /> {v.viewCount}</span>
+                            {v.durationSec > 0 && <span>{Math.floor(v.durationSec / 60)}:{String(v.durationSec % 60).padStart(2, '0')}</span>}
+                          </div>
+                          {v.products && v.products.length > 0 && (
+                            <p className="text-[11px] text-indigo-400 mt-0.5">{v.products.length} linked product{v.products.length !== 1 ? 's' : ''}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={async () => {
+                            await api.deleteVideo(v.id);
+                            loadVideos();
+                          }}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors self-center"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1559,6 +1826,16 @@ export function CreatorStudio({ onExit }: CreatorStudioProps) {
       <AnimatePresence>
         {showCSPEnroll && (
           <CSPEnrollmentModal onClose={() => setShowCSPEnroll(false)} onEnroll={handleCSPEnroll} enrolling={enrollingCSP} />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showUploadVideo && channel && (
+          <VideoUploadModal
+            channelId={channel.id}
+            products={products}
+            onClose={() => setShowUploadVideo(false)}
+            onUploaded={() => { setShowUploadVideo(false); loadVideos(); }}
+          />
         )}
       </AnimatePresence>
     </div>

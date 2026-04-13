@@ -3012,6 +3012,258 @@ func (s *Store) GetUpload(uploadID string) (*models.Upload, error) {
 	return u, err
 }
 
+// ── Videos / VOD ─────────────────────────────────────────────
+
+func (s *Store) CreateVideo(v *models.Video) error {
+	err := s.PG.QueryRow(
+		`INSERT INTO videos (channel_id, creator_id, title, description, video_url, thumbnail_url, duration_sec, file_size_bytes, status)
+		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING id, view_count, like_count, created_at, updated_at`,
+		v.ChannelID, v.CreatorID, v.Title, v.Description, v.VideoURL, v.ThumbnailURL, v.DurationSec, v.FileSizeBytes, v.Status,
+	).Scan(&v.ID, &v.ViewCount, &v.LikeCount, &v.CreatedAt, &v.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	_, _ = s.PG.Exec(`UPDATE users SET video_count = video_count + 1 WHERE id = $1::uuid`, v.CreatorID)
+	return nil
+}
+
+func (s *Store) GetVideoByID(id string) (*models.Video, error) {
+	v := &models.Video{Merchant: &models.Merchant{}}
+	err := s.PG.QueryRow(
+		`SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+		        v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+		        v.view_count, v.like_count, v.created_at, v.updated_at,
+		        u.display_name, COALESCE(u.avatar_url, ''),
+		        COALESCE(c.title, '')
+		 FROM videos v
+		 JOIN users u ON u.id = v.creator_id
+		 LEFT JOIN channels c ON c.id = v.channel_id
+		 WHERE v.id = $1::uuid`, id,
+	).Scan(&v.ID, &v.ChannelID, &v.CreatorID, &v.Title, &v.Description, &v.VideoURL,
+		&v.ThumbnailURL, &v.DurationSec, &v.FileSizeBytes, &v.Status,
+		&v.ViewCount, &v.LikeCount, &v.CreatedAt, &v.UpdatedAt,
+		&v.Merchant.Name, &v.Merchant.AvatarURL,
+		&v.ChannelTitle)
+	if err != nil {
+		return nil, err
+	}
+	v.Products, _ = s.GetVideoProducts(v.ID)
+	return v, nil
+}
+
+func (s *Store) GetVideosByChannel(channelID string, limit, offset int) ([]models.Video, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	rows, err := s.PG.Query(
+		`SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+		        v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+		        v.view_count, v.like_count, v.created_at, v.updated_at,
+		        u.display_name, COALESCE(u.avatar_url, '')
+		 FROM videos v
+		 JOIN users u ON u.id = v.creator_id
+		 WHERE v.channel_id = $1::uuid AND v.status = 'ready'
+		 ORDER BY v.created_at DESC
+		 LIMIT $2 OFFSET $3`, channelID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanVideoRows(rows)
+}
+
+func (s *Store) GetVideosByCreator(creatorID string, limit, offset int) ([]models.Video, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	rows, err := s.PG.Query(
+		`SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+		        v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+		        v.view_count, v.like_count, v.created_at, v.updated_at,
+		        u.display_name, COALESCE(u.avatar_url, '')
+		 FROM videos v
+		 JOIN users u ON u.id = v.creator_id
+		 WHERE v.creator_id = $1::uuid AND v.status = 'ready'
+		 ORDER BY v.created_at DESC
+		 LIMIT $2 OFFSET $3`, creatorID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanVideoRows(rows)
+}
+
+// GetCreatorVideosAll returns all videos for a creator including processing/failed (for Creator Studio).
+func (s *Store) GetCreatorVideosAll(creatorID string) ([]models.Video, error) {
+	rows, err := s.PG.Query(
+		`SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+		        v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+		        v.view_count, v.like_count, v.created_at, v.updated_at,
+		        u.display_name, COALESCE(u.avatar_url, '')
+		 FROM videos v
+		 JOIN users u ON u.id = v.creator_id
+		 WHERE v.creator_id = $1::uuid
+		 ORDER BY v.created_at DESC`, creatorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanVideoRows(rows)
+}
+
+func (s *Store) UpdateVideo(id string, req *models.UpdateVideoRequest) error {
+	sets := []string{}
+	args := []interface{}{}
+	i := 1
+	if req.Title != nil {
+		sets = append(sets, fmt.Sprintf("title = $%d", i))
+		args = append(args, *req.Title)
+		i++
+	}
+	if req.Description != nil {
+		sets = append(sets, fmt.Sprintf("description = $%d", i))
+		args = append(args, *req.Description)
+		i++
+	}
+	if req.ThumbnailURL != nil {
+		sets = append(sets, fmt.Sprintf("thumbnail_url = $%d", i))
+		args = append(args, *req.ThumbnailURL)
+		i++
+	}
+	if req.Status != nil {
+		sets = append(sets, fmt.Sprintf("status = $%d", i))
+		args = append(args, *req.Status)
+		i++
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	sets = append(sets, "updated_at = NOW()")
+	query := fmt.Sprintf("UPDATE videos SET %s WHERE id = $%d::uuid", strings.Join(sets, ", "), i)
+	args = append(args, id)
+	_, err := s.PG.Exec(query, args...)
+	return err
+}
+
+func (s *Store) DeleteVideo(id, creatorID string) error {
+	result, err := s.PG.Exec(`DELETE FROM videos WHERE id = $1::uuid AND creator_id = $2::uuid`, id, creatorID)
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		_, _ = s.PG.Exec(`UPDATE users SET video_count = GREATEST(video_count - 1, 0) WHERE id = $1::uuid`, creatorID)
+	}
+	return nil
+}
+
+func (s *Store) IncrVideoViewCount(id string) {
+	_, _ = s.PG.Exec(`UPDATE videos SET view_count = view_count + 1 WHERE id = $1::uuid`, id)
+}
+
+// GetUnifiedFeed returns a merged feed of live channels and ready videos, sorted by priority.
+func (s *Store) GetUnifiedFeed(category string, limit int) ([]models.FeedItem, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+
+	// Fetch channels
+	channels, err := s.GetChannelRail(category, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch ready videos
+	videoQuery := `SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+	                      v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+	                      v.view_count, v.like_count, v.created_at, v.updated_at,
+	                      u.display_name, COALESCE(u.avatar_url, '')
+	               FROM videos v
+	               JOIN users u ON u.id = v.creator_id
+	               WHERE v.status = 'ready'`
+	videoArgs := []interface{}{}
+	argIdx := 1
+	if category != "" {
+		ch := `LEFT JOIN channels c ON c.id = v.channel_id`
+		videoQuery = `SELECT v.id, v.channel_id, v.creator_id, v.title, v.description, v.video_url,
+	                      v.thumbnail_url, v.duration_sec, v.file_size_bytes, v.status,
+	                      v.view_count, v.like_count, v.created_at, v.updated_at,
+	                      u.display_name, COALESCE(u.avatar_url, '')
+	               FROM videos v
+	               JOIN users u ON u.id = v.creator_id
+	               ` + ch + fmt.Sprintf(` WHERE v.status = 'ready' AND c.category = $%d`, argIdx)
+		videoArgs = append(videoArgs, category)
+		argIdx++
+	}
+	videoQuery += fmt.Sprintf(` ORDER BY v.view_count DESC, v.created_at DESC LIMIT $%d`, argIdx)
+	videoArgs = append(videoArgs, limit)
+
+	rows, err := s.PG.Query(videoQuery, videoArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	videos, err := scanVideoRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge into feed: channels first (already priority-sorted), then videos
+	feed := make([]models.FeedItem, 0, len(channels)+len(videos))
+	for i := range channels {
+		feed = append(feed, models.FeedItem{ItemType: "channel", Channel: &channels[i]})
+	}
+	for i := range videos {
+		feed = append(feed, models.FeedItem{ItemType: "video", Video: &videos[i]})
+	}
+
+	// Truncate to limit
+	if len(feed) > limit {
+		feed = feed[:limit]
+	}
+	return feed, nil
+}
+
+// GetCreatorProfile returns a user with profile fields (bio, follower_count, video_count).
+func (s *Store) GetCreatorProfile(id string) (*models.User, error) {
+	u := &models.User{}
+	var bio sql.NullString
+	var followerCount, videoCount sql.NullInt64
+	err := s.PG.QueryRow(
+		`SELECT id, username, display_name, email, avatar_url, role,
+		        COALESCE(bio, ''), COALESCE(follower_count, 0), COALESCE(video_count, 0),
+		        created_at, updated_at
+		 FROM users WHERE id = $1::uuid`, id,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.AvatarURL, &u.Role,
+		&bio, &followerCount, &videoCount,
+		&u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// scanVideoRows scans multiple video rows (shared by several methods).
+func scanVideoRows(rows *sql.Rows) ([]models.Video, error) {
+	var videos []models.Video
+	for rows.Next() {
+		v := models.Video{Merchant: &models.Merchant{}}
+		if err := rows.Scan(
+			&v.ID, &v.ChannelID, &v.CreatorID, &v.Title, &v.Description, &v.VideoURL,
+			&v.ThumbnailURL, &v.DurationSec, &v.FileSizeBytes, &v.Status,
+			&v.ViewCount, &v.LikeCount, &v.CreatedAt, &v.UpdatedAt,
+			&v.Merchant.Name, &v.Merchant.AvatarURL,
+		); err != nil {
+			return nil, err
+		}
+		videos = append(videos, v)
+	}
+	return videos, nil
+}
+
 // ── M14: Admin Queries ────────────────────────────────────────
 
 // AdminListUsers returns paginated users with optional role filter.
@@ -3456,4 +3708,83 @@ func (s *Store) UpdateBillboard(b *models.Billboard) error {
 func (s *Store) DeleteBillboard(id string) error {
 	_, err := s.PG.Exec(`DELETE FROM billboards WHERE id = $1`, id)
 	return err
+}
+
+// ── Video-Product linking ─────────────────────────────────────
+
+func (s *Store) SetVideoProducts(videoID string, productIDs []string) error {
+	tx, err := s.PG.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`DELETE FROM video_products WHERE video_id = $1::uuid`, videoID)
+	if err != nil {
+		return err
+	}
+	for i, pid := range productIDs {
+		_, err = tx.Exec(
+			`INSERT INTO video_products (video_id, product_id, position) VALUES ($1::uuid, $2::uuid, $3)`,
+			videoID, pid, i,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GetVideoProducts(videoID string) ([]models.Product, error) {
+	rows, err := s.PG.Query(
+		`SELECT p.id, p.channel_id, p.name, p.description, p.image_url, p.price_cents,
+		        p.original_price_cents, p.inventory, p.sale_type, p.is_pinned,
+		        p.auction_end_at, p.drop_at,
+		        COALESCE(p.auction_status, 'pending'), COALESCE(p.auction_reserve_cents, 0),
+		        p.auction_winner_id, COALESCE(p.current_bid_cents, 0), p.highest_bidder_id,
+		        COALESCE(p.bid_count, 0), p.created_at
+		 FROM video_products vp
+		 JOIN products p ON p.id = vp.product_id
+		 WHERE vp.video_id = $1::uuid
+		 ORDER BY vp.position`, videoID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		p := models.Product{}
+		var origPrice sql.NullInt64
+		var auctionEnd, dropAt sql.NullTime
+		var winnerID, bidderID sql.NullString
+		if err := rows.Scan(
+			&p.ID, &p.ChannelID, &p.Name, &p.Description, &p.ImageURL, &p.PriceCents,
+			&origPrice, &p.Inventory, &p.SaleType, &p.IsPinned,
+			&auctionEnd, &dropAt,
+			&p.AuctionStatus, &p.AuctionReserveCents,
+			&winnerID, &p.CurrentBidCents, &bidderID,
+			&p.BidCount, &p.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if origPrice.Valid {
+			p.OriginalPrice = &origPrice.Int64
+		}
+		if auctionEnd.Valid {
+			p.AuctionEndAt = &auctionEnd.Time
+		}
+		if dropAt.Valid {
+			p.DropAt = &dropAt.Time
+		}
+		if winnerID.Valid {
+			p.AuctionWinnerID = &winnerID.String
+		}
+		if bidderID.Valid {
+			p.HighestBidderID = &bidderID.String
+		}
+		products = append(products, p)
+	}
+	return products, nil
 }

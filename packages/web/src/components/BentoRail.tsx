@@ -42,6 +42,7 @@ const STATUS_DOT: Record<string, string> = {
   LIVE: 'bg-red-500 shadow-red-500/50',
   RELAY: 'bg-indigo-400 shadow-indigo-400/50',
   SCHEDULED: 'bg-gray-400 shadow-gray-400/50',
+  VOD: 'bg-purple-400 shadow-purple-400/50',
 };
 
 export function BentoRail({ channels, currentChannelId, onSelectChannel, onClose }: BentoRailProps) {
