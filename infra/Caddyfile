@@ -45,6 +45,14 @@ https://137.131.51.134 {
 		uri strip_prefix /hls
 		reverse_proxy mediamtx:8888
 		header Access-Control-Allow-Origin *
+		# CDN-ready cache policy:
+		#   .m3u8 playlists update every ~1s — keep TTL tiny but cacheable for fanout
+		#   .m4s/.ts segments are immutable — cache aggressively
+		# Flip CDN on by pointing DNS at Cloudflare/Bunny in front of this host.
+		@playlist path *.m3u8
+		header @playlist Cache-Control "public, max-age=1, s-maxage=2"
+		@segment path *.m4s *.ts *.mp4
+		header @segment Cache-Control "public, max-age=3600, immutable"
 	}
 
 	handle {

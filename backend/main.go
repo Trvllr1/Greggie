@@ -23,6 +23,7 @@ import (
 	fiberCors "github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
+	fiberRequestID "github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
 func main() {
@@ -101,7 +102,12 @@ func main() {
 			return c.Status(code).JSON(fiber.Map{"error": err.Error()})
 		},
 	})
-	app.Use(fiberLogger.New())
+	// Request ID — generates X-Request-ID header per request (returned to client + available via c.Locals("requestid"))
+	app.Use(fiberRequestID.New())
+	// Access log including request id for correlation
+	app.Use(fiberLogger.New(fiberLogger.Config{
+		Format: "${time} ${locals:requestid} ${ip} ${status} ${method} ${path} ${latency}\n",
+	}))
 
 	// ── CORS: env-controlled origins ──
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
