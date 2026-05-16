@@ -68,7 +68,7 @@ export function BidModal({ product, onClose, onBid }: BidModalProps) {
 
       // If someone else outbid us, show warning
       setOutbid(true);
-      clearTimeout(outbidTimerRef.current);
+      if (outbidTimerRef.current) clearTimeout(outbidTimerRef.current);
       outbidTimerRef.current = setTimeout(() => setOutbid(false), 4000);
 
       // Ensure bid amount stays above current

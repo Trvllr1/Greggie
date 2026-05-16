@@ -7,10 +7,15 @@ dist/
 packages/*/dist/
 backend/greggie-backend
 backend/greggie-backend.exe
+backend/greggie-backend-linux
 /greggie-backend
 build-result.txt
 packages/*/build-result.txt
 packages/*/.build-log.txt
+
+# Deploy artifacts
+*.tar
+deploy-now.sh
 
 # Expo
 .expo/

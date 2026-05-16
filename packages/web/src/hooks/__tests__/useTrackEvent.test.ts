@@ -34,9 +34,9 @@ describe('useTrackEvent', () => {
     const [url, opts] = spy.mock.calls[0];
     expect(url).toContain('/api/v1/events');
     expect(opts).toBeDefined();
-    expect(opts.method).toBe('POST');
+    expect(opts!.method).toBe('POST');
 
-    const body = JSON.parse(opts.body as string);
+    const body = JSON.parse(opts!.body as string);
     expect(body.event_type).toBe('purchase');
     expect(body.channel_id).toBe('ch-2');
   });
@@ -50,7 +50,7 @@ describe('useTrackEvent', () => {
 
     const [, opts] = spy.mock.calls[0];
     expect(opts).toBeDefined();
-    const body = JSON.parse(opts.body as string);
+    const body = JSON.parse(opts!.body as string);
     expect(body.channel_id).toBe('');
   });
 });

@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 
 // We need to mock api before importing the hook
 vi.mock('../../services/api', () => ({
-  getRail: vi.fn(),
+  getUnifiedFeed: vi.fn(),
   getPrimaryChannel: vi.fn(),
 }));
 
@@ -28,7 +28,7 @@ describe('useChannels', () => {
   });
 
   it('falls back to mock data when API fails', async () => {
-    (api.getRail as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('offline'));
+    (api.getUnifiedFeed as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('offline'));
     (api.getPrimaryChannel as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('offline'));
 
     const { result } = renderHook(() => useChannels());
@@ -47,7 +47,7 @@ describe('useChannels', () => {
     const channels = [mockChannel('r1'), mockChannel('r2')];
     const primary = mockChannel('r1', { is_primary: true });
 
-    (api.getRail as ReturnType<typeof vi.fn>).mockResolvedValue(channels);
+    (api.getUnifiedFeed as ReturnType<typeof vi.fn>).mockResolvedValue(channels);
     (api.getPrimaryChannel as ReturnType<typeof vi.fn>).mockResolvedValue(primary);
 
     const { result } = renderHook(() => useChannels());
@@ -61,19 +61,19 @@ describe('useChannels', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('passes category to getRail', async () => {
-    (api.getRail as ReturnType<typeof vi.fn>).mockResolvedValue([mockChannel('c1')]);
+  it('passes category to getUnifiedFeed', async () => {
+    (api.getUnifiedFeed as ReturnType<typeof vi.fn>).mockResolvedValue([mockChannel('c1')]);
     (api.getPrimaryChannel as ReturnType<typeof vi.fn>).mockResolvedValue(mockChannel('c1'));
 
     renderHook(() => useChannels('Fashion'));
 
     await vi.waitFor(() => {
-      expect(api.getRail).toHaveBeenCalledWith('Fashion');
+      expect(api.getUnifiedFeed).toHaveBeenCalledWith('Fashion');
     });
   });
 
   it('refresh re-fetches channels', async () => {
-    (api.getRail as ReturnType<typeof vi.fn>).mockResolvedValue([mockChannel('c1')]);
+    (api.getUnifiedFeed as ReturnType<typeof vi.fn>).mockResolvedValue([mockChannel('c1')]);
     (api.getPrimaryChannel as ReturnType<typeof vi.fn>).mockResolvedValue(mockChannel('c1'));
 
     const { result } = renderHook(() => useChannels());
@@ -82,14 +82,14 @@ describe('useChannels', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(api.getRail).toHaveBeenCalledTimes(1);
+    expect(api.getUnifiedFeed).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       result.current.refresh();
     });
 
     await vi.waitFor(() => {
-      expect(api.getRail).toHaveBeenCalledTimes(2);
+      expect(api.getUnifiedFeed).toHaveBeenCalledTimes(2);
     });
   });
 });
