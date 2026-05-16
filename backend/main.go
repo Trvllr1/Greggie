@@ -295,19 +295,33 @@ func main() {
 	optAuth.Post("/checkout/validate-coupon", checkout.ValidateCoupon)
 
 	// ── WebSocket ──
-	// Upgrade check — parse JWT from query param ?token=<jwt>
+	// Upgrade check — validate Origin (CSWSH protection) + parse JWT from query param ?token=<jwt>
 	app.Use("/ws", func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			token := c.Query("token")
-			if token != "" {
-				userID, _, err := middleware.ParseToken(token)
-				if err == nil {
-					c.Locals("user_id", userID)
+		if !websocket.IsWebSocketUpgrade(c) {
+			return fiber.ErrUpgradeRequired
+		}
+		// Origin enforcement: must match ALLOWED_ORIGINS unless wildcard.
+		origin := c.Get("Origin")
+		if allowedOrigins != "*" && origin != "" {
+			ok := false
+			for _, allowed := range strings.Split(allowedOrigins, ",") {
+				if strings.TrimSpace(allowed) == origin {
+					ok = true
+					break
 				}
 			}
-			return c.Next()
+			if !ok {
+				return fiber.NewError(fiber.StatusForbidden, "origin not allowed")
+			}
 		}
-		return fiber.ErrUpgradeRequired
+		token := c.Query("token")
+		if token != "" {
+			userID, _, err := middleware.ParseToken(token)
+			if err == nil {
+				c.Locals("user_id", userID)
+			}
+		}
+		return c.Next()
 	})
 	app.Get("/ws", websocket.New(ws.HandleWebSocket(hub)))
 

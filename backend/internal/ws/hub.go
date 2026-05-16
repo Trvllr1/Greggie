@@ -9,6 +9,15 @@ import (
 	"github.com/gofiber/contrib/websocket"
 )
 
+// ── Limits ──
+const (
+	maxMessageBytes = 8 * 1024 // 8 KB per WS frame — chat msgs are tiny; rejects bombs
+	pongWait        = 60 * time.Second
+	pingPeriod      = 30 * time.Second
+	chatRateBurst   = 5               // allow short bursts
+	chatRateRefill  = 500 * time.Millisecond // 1 msg per 500ms steady-state (2/sec)
+)
+
 // ── Event types ──
 
 const (
@@ -39,6 +48,36 @@ type Client struct {
 	userID    string
 	channelID string // currently-watching channel
 	mu        sync.Mutex
+
+	// Per-client token bucket for chat/heart rate limiting.
+	rateMu     sync.Mutex
+	rateTokens int
+	rateLast   time.Time
+}
+
+// allowMessage consumes one token from the per-client bucket. Returns false if rate-limited.
+func (c *Client) allowMessage() bool {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	now := time.Now()
+	if c.rateLast.IsZero() {
+		c.rateTokens = chatRateBurst
+		c.rateLast = now
+	}
+	// Refill tokens based on elapsed time.
+	add := int(now.Sub(c.rateLast) / chatRateRefill)
+	if add > 0 {
+		c.rateTokens += add
+		if c.rateTokens > chatRateBurst {
+			c.rateTokens = chatRateBurst
+		}
+		c.rateLast = now
+	}
+	if c.rateTokens <= 0 {
+		return false
+	}
+	c.rateTokens--
+	return true
 }
 
 func (c *Client) SetChannel(channelID string) {
@@ -60,6 +99,13 @@ func (c *Client) readPump() {
 		c.conn.Close()
 	}()
 
+	// Apply read limits + pong handler so dead TCP connections are detected promptly.
+	c.conn.SetReadLimit(maxMessageBytes)
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
 	for {
 		_, raw, err := c.conn.ReadMessage()
 		if err != nil {
@@ -77,12 +123,18 @@ func (c *Client) readPump() {
 		}
 		// Chat messages: enrich with sender identity, then broadcast to channel
 		if msg.Event == EventChatMessage && msg.ChannelID != "" {
+			// Auth-required: silently drop chat from anonymous connections (prevents user_id forgery).
+			if c.userID == "" {
+				continue
+			}
+			// Per-client rate limit.
+			if !c.allowMessage() {
+				continue
+			}
 			var payload map[string]interface{}
 			if json.Unmarshal(msg.Payload, &payload) == nil {
-				if c.userID != "" {
-					payload["user_id"] = c.userID
-				}
-				if _, ok := payload["user"]; !ok && c.userID != "" {
+				payload["user_id"] = c.userID
+				if _, ok := payload["user"]; !ok {
 					payload["user"] = c.userID
 				}
 				enriched, _ := json.Marshal(payload)
@@ -92,10 +144,8 @@ func (c *Client) readPump() {
 				var s string
 				if json.Unmarshal(msg.Payload, &s) == nil {
 					if json.Unmarshal([]byte(s), &payload) == nil {
-						if c.userID != "" {
-							payload["user_id"] = c.userID
-						}
-						if _, ok := payload["user"]; !ok && c.userID != "" {
+						payload["user_id"] = c.userID
+						if _, ok := payload["user"]; !ok {
 							payload["user"] = c.userID
 						}
 						enriched, _ := json.Marshal(payload)
@@ -114,6 +164,10 @@ func (c *Client) readPump() {
 		}
 		// Heart bursts: increment persistent count, broadcast to channel
 		if msg.Event == EventHeartBurst && msg.ChannelID != "" {
+			// Per-client rate limit (shared bucket with chat).
+			if !c.allowMessage() {
+				continue
+			}
 			var totalLikes int64
 			if c.hub.OnHeartBurst != nil {
 				totalLikes = c.hub.OnHeartBurst(msg.ChannelID)
@@ -131,7 +185,7 @@ func (c *Client) readPump() {
 
 // writePump sends messages from the hub to the WebSocket client.
 func (c *Client) writePump() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
