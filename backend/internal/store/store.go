@@ -1602,6 +1602,46 @@ func (s *Store) UpdateOrderStripePaymentID(orderID, paymentID, clientSecret stri
 	return err
 }
 
+// ExpireStalePendingOrders finds orders in 'pending' status older than olderThan,
+// restores their inventory, and marks them 'expired'. Returns the count of orders expired.
+// Safe to call from a background reaper; uses per-order transactions so a single failure
+// doesn't block the rest.
+func (s *Store) ExpireStalePendingOrders(olderThan time.Duration) (int, error) {
+	rows, err := s.PG.Query(
+		`SELECT id FROM orders
+		 WHERE status = 'pending'
+		   AND created_at < NOW() - ($1 || ' seconds')::interval`,
+		strconv.Itoa(int(olderThan.Seconds())),
+	)
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+
+	expired := 0
+	for _, id := range ids {
+		if err := s.RestoreInventory(id); err != nil {
+			log.Printf("reaper: restore inventory failed for order %s: %v", id, err)
+			continue
+		}
+		if err := s.UpdateOrderStatus(id, "expired"); err != nil {
+			log.Printf("reaper: mark expired failed for order %s: %v", id, err)
+			continue
+		}
+		expired++
+	}
+	return expired, nil
+}
+
 func (s *Store) RestoreInventory(orderID string) error {
 	tx, err := s.PG.Begin()
 	if err != nil {

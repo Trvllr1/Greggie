@@ -158,6 +158,24 @@ func main() {
 	auctionEngine := auction.NewEngine(db, hub)
 	auctionEngine.Start()
 
+	// ── Stale order reaper ──
+	// Every 5 minutes, expire pending orders older than 15 minutes and restore their inventory.
+	// Covers abandoned carts where the user never completes Stripe payment.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			n, err := db.ExpireStalePendingOrders(15 * time.Minute)
+			if err != nil {
+				log.Printf("reaper: ExpireStalePendingOrders failed: %v", err)
+				continue
+			}
+			if n > 0 {
+				log.Printf("reaper: expired %d stale pending order(s)", n)
+			}
+		}
+	}()
+
 	api := app.Group("/api/v1")
 
 	// Health (simple)
@@ -305,7 +323,24 @@ func main() {
 	// Checkout
 	protected.Post("/checkout", checkout.InitCheckout)
 	protected.Get("/shipping-addresses", checkout.GetShippingAddresses)
-	protected.Post("/bids", auctionH.PlaceBid)
+
+	// Bids — per-user rate limit (10 bids per 10 seconds) to prevent griefing
+	bidLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 10 * time.Second,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			if uid, ok := c.Locals("user_id").(string); ok && uid != "" {
+				return "bid:" + uid
+			}
+			return "bid:" + c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "slow down — too many bids in a short time",
+			})
+		},
+	})
+	protected.Post("/bids", bidLimiter, auctionH.PlaceBid)
 
 	// Auction
 	protected.Post("/auction/start", auctionH.StartAuction)
