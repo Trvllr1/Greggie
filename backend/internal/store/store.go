@@ -1665,6 +1665,30 @@ func (s *Store) SetStripeOnboardingByAccountID(accountID string, complete bool) 
 	return err
 }
 
+// MarkWebhookEventProcessed records a webhook event ID as processed.
+// Returns (true, nil) if this is the first time the event was seen and processing should proceed.
+// Returns (false, nil) if the event was already processed (duplicate redelivery) — caller should ack and skip.
+func (s *Store) MarkWebhookEventProcessed(eventID, source, eventType string) (bool, error) {
+	if eventID == "" {
+		// No ID to dedup on — process but warn at call site.
+		return true, nil
+	}
+	res, err := s.PG.Exec(
+		`INSERT INTO processed_webhook_events (event_id, source, event_type)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (event_id) DO NOTHING`,
+		eventID, source, eventType,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
 // ── Shops ──
 
 func (s *Store) CreateShop(shop *models.Shop) error {

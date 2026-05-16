@@ -38,6 +38,18 @@ func (h *WebhookHandler) HandleStripeWebhook(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid signature"})
 	}
 
+	// Idempotency: Stripe redelivers events on retry. Dedup by event ID so we don't
+	// double-send confirmation emails, double-restore inventory, etc.
+	fresh, err := h.Store.MarkWebhookEventProcessed(event.ID, "stripe", string(event.Type))
+	if err != nil {
+		log.Printf("webhook: dedup check failed for event %s: %v", event.ID, err)
+		// Fall through and process anyway — better to risk a duplicate than to drop on the floor.
+		// Stripe will retry on non-2xx, so returning 500 here would just amplify the problem.
+	} else if !fresh {
+		log.Printf("webhook: duplicate event %s (%s) — already processed, ack", event.ID, event.Type)
+		return c.SendStatus(fiber.StatusOK)
+	}
+
 	switch event.Type {
 	case "payment_intent.succeeded":
 		h.handlePaymentSuccess(event.Data.Raw)
