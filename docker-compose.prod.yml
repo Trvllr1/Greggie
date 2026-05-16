@@ -28,7 +28,11 @@ services:
       - DB_MAX_OPEN=10
       - DB_MAX_IDLE=3
       - HLS_PUBLIC_URL=http://mediamtx:8888
-      - PUBLIC_URL=https://137.131.51.134
+      - PUBLIC_URL=${PUBLIC_URL:-https://137.131.51.134}
+      # ALLOWED_ORIGINS must include every Origin the browser will send when connecting
+      # (CORS preflights + WebSocket upgrades). Defaults to the IP-based origin used today;
+      # update via .env once a real domain is in place (e.g. https://greggie.app).
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://137.131.51.134}
     depends_on:
       postgres:
         condition: service_healthy
