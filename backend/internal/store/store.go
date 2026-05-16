@@ -257,6 +257,20 @@ func (s *Store) GetChannelStreamKey(id string) (string, error) {
 	return key, err
 }
 
+// GetChannelByStreamKey looks up a channel by its stream key. Used by the MediaMTX
+// auth hook to validate RTMP/WebRTC publish requests. Returns sql.ErrNoRows for unknown keys.
+func (s *Store) GetChannelByStreamKey(streamKey string) (*models.Channel, error) {
+	ch := &models.Channel{}
+	err := s.PG.QueryRow(
+		`SELECT id, creator_id, title, status, stream_key
+		 FROM channels WHERE stream_key = $1`, streamKey,
+	).Scan(&ch.ID, &ch.CreatorID, &ch.Title, &ch.Status, &ch.StreamKey)
+	if err != nil {
+		return nil, err
+	}
+	return ch, nil
+}
+
 func (s *Store) GetPrimaryChannel() (*models.Channel, error) {
 	ch := &models.Channel{Merchant: &models.Merchant{}}
 	var scheduledAt sql.NullTime

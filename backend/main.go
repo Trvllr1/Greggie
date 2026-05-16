@@ -153,6 +153,7 @@ func main() {
 	uploads := &handlers.UploadHandler{Store: db}
 	videos := &handlers.VideoHandler{Store: db}
 	billboard := &handlers.BillboardHandler{Store: db}
+	internalH := &handlers.InternalHandler{Store: db}
 
 	// ── Auction engine (auto-ends expired auctions) ──
 	auctionEngine := auction.NewEngine(db, hub)
@@ -177,6 +178,11 @@ func main() {
 	}()
 
 	api := app.Group("/api/v1")
+
+	// Internal-only endpoints — NOT exposed via Caddy (Caddy proxies only /api, /ws, /hls, /whip).
+	// Used by MediaMTX (Docker internal network) to validate RTMP/WebRTC publishers against stream keys.
+	internal := app.Group("/internal")
+	internal.Post("/streams/auth", internalH.MediaMTXAuth)
 
 	// Health (simple)
 	api.Get("/health", func(c *fiber.Ctx) error {
