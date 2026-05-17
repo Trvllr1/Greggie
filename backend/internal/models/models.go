@@ -614,20 +614,23 @@ type RelayQueryResponse struct {
 // ── Seller Programs ──
 
 type SellerProgram struct {
-	ID               string     `json:"id"`
-	UserID           string     `json:"user_id"`
-	ProgramType      string     `json:"program_type"`
-	Status           string     `json:"status"`
-	Tier             string     `json:"tier"`
-	AgreedAt         *time.Time `json:"agreed_at,omitempty"`
-	AgreementVersion string     `json:"agreement_version"`
-	ApplicationNote  string     `json:"application_note,omitempty"`
-	RejectionReason  string     `json:"rejection_reason,omitempty"`
-	ApprovedAt       *time.Time `json:"approved_at,omitempty"`
-	ActivatedAt      *time.Time `json:"activated_at,omitempty"`
-	SuspendedAt      *time.Time `json:"suspended_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID                    string     `json:"id"`
+	UserID                string     `json:"user_id"`
+	ProgramType           string     `json:"program_type"`
+	Status                string     `json:"status"`
+	Tier                  string     `json:"tier"`
+	PartnershipProgram    bool       `json:"partnership_program"`
+	AgreedAt              *time.Time `json:"agreed_at,omitempty"`
+	AgreementVersion      string     `json:"agreement_version"`
+	ApplicationNote       string     `json:"application_note,omitempty"`
+	RejectionReason       string     `json:"rejection_reason,omitempty"`
+	ApprovedAt            *time.Time `json:"approved_at,omitempty"`
+	ActivatedAt           *time.Time `json:"activated_at,omitempty"`
+	SuspendedAt           *time.Time `json:"suspended_at,omitempty"`
+	TierEvaluatedAt       *time.Time `json:"tier_evaluated_at,omitempty"`
+	TierDemotionPendingAt *time.Time `json:"tier_demotion_pending_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type EnrollProgramRequest struct {
@@ -667,6 +670,8 @@ type SellerDashboard struct {
 	PaidPayouts       int64         `json:"paid_payouts_cents"`
 	CommissionPct     float64       `json:"commission_pct"`
 	CurrentTier       string        `json:"current_tier"`
+	NextTier          string        `json:"next_tier,omitempty"`
+	NextTierProgress  *TierProgress `json:"next_tier_progress,omitempty"`
 	// CSP-specific
 	TotalStreamHours float64 `json:"total_stream_hours,omitempty"`
 	TotalViewers     int64   `json:"total_viewers,omitempty"`
@@ -674,6 +679,17 @@ type SellerDashboard struct {
 	ActiveListings int `json:"active_listings,omitempty"`
 	PendingOrders  int `json:"pending_orders,omitempty"`
 	ShippedOrders  int `json:"shipped_orders,omitempty"`
+}
+
+// TierProgress reports how close a seller is to their next tier. Each metric
+// is a ratio in [0,1]; 1.0 means the threshold is met. UI can render bars.
+type TierProgress struct {
+	NextTier      string             `json:"next_tier"`
+	NextTierPct   float64            `json:"next_tier_commission_pct"`
+	Thresholds    map[string]float64 `json:"thresholds"`     // target values
+	CurrentValues map[string]float64 `json:"current_values"` // seller's actual values
+	Progress      map[string]float64 `json:"progress"`       // current/target ratio, capped at 1
+	BlockedReason string             `json:"blocked_reason,omitempty"`
 }
 
 type FulfillmentRecord struct {

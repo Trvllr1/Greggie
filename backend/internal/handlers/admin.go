@@ -72,6 +72,25 @@ func (h *AdminHandler) UpdateSellerProgram(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "updated"})
 }
 
+// SetPartnership grants or revokes the partnership_program flag on a seller
+// program. Partnership is a manual perk gate (account manager, billboard
+// slots, co-marketing) layered on top of the auto-computed tier. A seller
+// must still meet the metric bar for 'partner' before the flag changes
+// their commission rate — the flag alone does not promote them.
+func (h *AdminHandler) SetPartnership(c *fiber.Ctx) error {
+	programID := c.Params("id")
+	var req struct {
+		Active bool `json:"active"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if err := h.Store.SetPartnershipProgram(programID, req.Active); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update partnership flag"})
+	}
+	return c.JSON(fiber.Map{"status": "updated", "partnership_program": req.Active})
+}
+
 // ListOrders returns paginated orders with optional status filter.
 func (h *AdminHandler) ListOrders(c *fiber.Ctx) error {
 	status := c.Query("status")

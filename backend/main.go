@@ -17,6 +17,7 @@ import (
 	"greggie/backend/internal/payments"
 	"greggie/backend/internal/storage"
 	"greggie/backend/internal/store"
+	"greggie/backend/internal/tiers"
 	"greggie/backend/internal/ws"
 
 	"github.com/gofiber/contrib/websocket"
@@ -177,6 +178,30 @@ func main() {
 			if n > 0 {
 				slog.Info("reaper: expired stale pending orders", "count", n)
 			}
+		}
+	}()
+
+	// ── Seller tier promoter ──
+	// Daily: promote sellers whose metrics cross the next-tier bar; mark
+	// under-performers as pending demotion (14-day cure). Runs once at startup
+	// and again every 24h.
+	tierEval := tiers.NewEvaluator(db, db.PG)
+	go func() {
+		run := func() {
+			p, d, err := tierEval.EvaluateAll()
+			if err != nil {
+				slog.Error("tier_promoter: EvaluateAll failed", "err", err)
+				return
+			}
+			if p > 0 || d > 0 {
+				slog.Info("tier_promoter: cycle complete", "promoted", p, "demoted", d)
+			}
+		}
+		run()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			run()
 		}
 	}()
 
@@ -446,6 +471,7 @@ func main() {
 	adminGroup.Get("/orders", admin.ListOrders)
 	adminGroup.Get("/programs", admin.ListSellerPrograms)
 	adminGroup.Put("/programs/:id", admin.UpdateSellerProgram)
+	adminGroup.Post("/programs/:id/partnership", admin.SetPartnership)
 	adminGroup.Post("/payouts/process", admin.ProcessPayouts)
 
 	// Billboards (admin CRUD)

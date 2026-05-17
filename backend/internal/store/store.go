@@ -2741,13 +2741,17 @@ func (s *Store) CreateSellerProgram(sp *models.SellerProgram) error {
 func (s *Store) GetSellerProgram(userID, programType string) (*models.SellerProgram, error) {
 	sp := &models.SellerProgram{}
 	err := s.PG.QueryRow(
-		`SELECT id, user_id, program_type, status, tier,
+		`SELECT id, user_id, program_type, status, tier, partnership_program,
 		        agreed_at, agreement_version, COALESCE(application_note,''), COALESCE(rejection_reason,''),
-		        approved_at, activated_at, suspended_at, created_at, updated_at
+		        approved_at, activated_at, suspended_at,
+		        tier_evaluated_at, tier_demotion_pending_at,
+		        created_at, updated_at
 		 FROM seller_programs WHERE user_id = $1 AND program_type = $2`, userID, programType,
-	).Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+	).Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier, &sp.PartnershipProgram,
 		&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
-		&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt, &sp.CreatedAt, &sp.UpdatedAt)
+		&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt,
+		&sp.TierEvaluatedAt, &sp.TierDemotionPendingAt,
+		&sp.CreatedAt, &sp.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -2756,9 +2760,11 @@ func (s *Store) GetSellerProgram(userID, programType string) (*models.SellerProg
 
 func (s *Store) GetSellerPrograms(userID string) ([]models.SellerProgram, error) {
 	rows, err := s.PG.Query(
-		`SELECT id, user_id, program_type, status, tier,
+		`SELECT id, user_id, program_type, status, tier, partnership_program,
 		        agreed_at, agreement_version, COALESCE(application_note,''), COALESCE(rejection_reason,''),
-		        approved_at, activated_at, suspended_at, created_at, updated_at
+		        approved_at, activated_at, suspended_at,
+		        tier_evaluated_at, tier_demotion_pending_at,
+		        created_at, updated_at
 		 FROM seller_programs WHERE user_id = $1 ORDER BY created_at`, userID,
 	)
 	if err != nil {
@@ -2768,9 +2774,11 @@ func (s *Store) GetSellerPrograms(userID string) ([]models.SellerProgram, error)
 	var programs []models.SellerProgram
 	for rows.Next() {
 		var sp models.SellerProgram
-		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier, &sp.PartnershipProgram,
 			&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
-			&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt, &sp.CreatedAt, &sp.UpdatedAt); err != nil {
+			&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt,
+			&sp.TierEvaluatedAt, &sp.TierDemotionPendingAt,
+			&sp.CreatedAt, &sp.UpdatedAt); err != nil {
 			return nil, err
 		}
 		programs = append(programs, sp)
@@ -3644,15 +3652,33 @@ func (s *Store) AdminUpdateSellerProgram(programID, status, reason string) error
 	return err
 }
 
+// SetPartnershipProgram toggles the manual partnership flag on a seller
+// program. Partnership is the perks/marketing track and is independent of
+// the auto-computed metric tier — the nightly tier evaluator only uses this
+// flag as one of the gates for promoting a seller into 'partner'.
+func (s *Store) SetPartnershipProgram(programID string, active bool) error {
+	_, err := s.PG.Exec(
+		`UPDATE seller_programs
+		    SET partnership_program = $1,
+		        updated_at = NOW()
+		  WHERE id = $2::uuid`,
+		active, programID,
+	)
+	return err
+}
+
 // AdminListSellerPrograms returns all seller programs with optional status filter.
 func (s *Store) AdminListSellerPrograms(status string, limit, offset int) ([]models.SellerProgram, int, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	countQuery := `SELECT COUNT(*) FROM seller_programs`
-	dataQuery := `SELECT id, user_id, program_type, status, tier, agreed_at, agreement_version,
+	dataQuery := `SELECT id, user_id, program_type, status, tier, partnership_program,
+	              agreed_at, agreement_version,
 	              COALESCE(application_note,''), COALESCE(rejection_reason,''),
-	              approved_at, activated_at, created_at, updated_at
+	              approved_at, activated_at, suspended_at,
+	              tier_evaluated_at, tier_demotion_pending_at,
+	              created_at, updated_at
 	              FROM seller_programs`
 
 	var args []interface{}
@@ -3680,9 +3706,11 @@ func (s *Store) AdminListSellerPrograms(status string, limit, offset int) ([]mod
 	var programs []models.SellerProgram
 	for rows.Next() {
 		var sp models.SellerProgram
-		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier,
+		if err := rows.Scan(&sp.ID, &sp.UserID, &sp.ProgramType, &sp.Status, &sp.Tier, &sp.PartnershipProgram,
 			&sp.AgreedAt, &sp.AgreementVersion, &sp.ApplicationNote, &sp.RejectionReason,
-			&sp.ApprovedAt, &sp.ActivatedAt, &sp.CreatedAt, &sp.UpdatedAt); err != nil {
+			&sp.ApprovedAt, &sp.ActivatedAt, &sp.SuspendedAt,
+			&sp.TierEvaluatedAt, &sp.TierDemotionPendingAt,
+			&sp.CreatedAt, &sp.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		programs = append(programs, sp)
