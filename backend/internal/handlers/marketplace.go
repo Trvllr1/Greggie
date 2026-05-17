@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"strconv"
+
+	"greggie/backend/internal/middleware"
 	"greggie/backend/internal/models"
 	"greggie/backend/internal/store"
 
@@ -76,4 +79,80 @@ func (h *MarketplaceHandler) Gateway(c *fiber.Ctx) error {
 		gw.Auctions = []models.Product{}
 	}
 	return c.JSON(gw)
+}
+
+// GetRecent returns the chronological "Just Posted" feed — the default
+// Marketplace landing experience. Supports optional category, ZIP, and
+// Near-me (lat/lng/radius_km) filters.
+//
+// GET /marketplace/recent?limit&offset&category&zip&lat&lng&radius_km
+func (h *MarketplaceHandler) GetRecent(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 40)
+	offset := c.QueryInt("offset", 0)
+	category := c.Query("category")
+
+	q := store.RecentProductsQuery{
+		Limit:    limit,
+		Offset:   offset,
+		Category: category,
+	}
+
+	if lat, err := strconv.ParseFloat(c.Query("lat"), 64); err == nil {
+		q.Lat = lat
+	}
+	if lng, err := strconv.ParseFloat(c.Query("lng"), 64); err == nil {
+		q.Lng = lng
+	}
+	if r, err := strconv.ParseFloat(c.Query("radius_km"), 64); err == nil {
+		q.RadiusKm = r
+	}
+
+	products, err := h.Store.GetRecentProducts(q)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load feed"})
+	}
+	return c.JSON(products)
+}
+
+// GetSaved — GET /marketplace/saved
+func (h *MarketplaceHandler) GetSaved(c *fiber.Ctx) error {
+	uid := middleware.GetUserID(c)
+	limit := c.QueryInt("limit", 40)
+	offset := c.QueryInt("offset", 0)
+	products, err := h.Store.GetSavedProducts(uid, limit, offset)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load saved"})
+	}
+	// All returned items are saved by definition.
+	for i := range products {
+		products[i].IsSaved = true
+	}
+	return c.JSON(products)
+}
+
+// ToggleSaved — POST /marketplace/saved/:productId
+// Idempotent. Returns {saved: true}.
+func (h *MarketplaceHandler) ToggleSaved(c *fiber.Ctx) error {
+	uid := middleware.GetUserID(c)
+	pid := c.Params("productId")
+	if pid == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "product id required"})
+	}
+	if err := h.Store.SaveProduct(uid, pid); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save"})
+	}
+	return c.JSON(fiber.Map{"saved": true})
+}
+
+// RemoveSaved — DELETE /marketplace/saved/:productId
+func (h *MarketplaceHandler) RemoveSaved(c *fiber.Ctx) error {
+	uid := middleware.GetUserID(c)
+	pid := c.Params("productId")
+	if pid == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "product id required"})
+	}
+	if err := h.Store.UnsaveProduct(uid, pid); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove"})
+	}
+	return c.JSON(fiber.Map{"saved": false})
 }

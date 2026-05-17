@@ -125,6 +125,7 @@ interface ApiBundle {
 interface ApiProduct {
   id: string;
   channel_id: string;
+  shop_id?: string;
   name: string;
   description: string;
   image_url: string;
@@ -162,6 +163,11 @@ interface ApiProduct {
   reviews?: ApiReview[];
   related_products?: ApiProduct[];
   bundles?: ApiBundle[];
+  // Marketplace simplification (location + saved)
+  location_zip?: string;
+  location_lat?: number;
+  location_lng?: number;
+  is_saved?: boolean;
 }
 
 interface ApiChannel {
@@ -283,6 +289,13 @@ function mapProduct(p: ApiProduct): Product {
         quantity: i.quantity,
       })),
     })),
+    // Marketplace simplification
+    shopId: p.shop_id,
+    locationZip: p.location_zip,
+    locationLat: p.location_lat,
+    locationLng: p.location_lng,
+    isSaved: p.is_saved,
+    createdAt: p.created_at,
   };
 }
 
@@ -638,6 +651,59 @@ export async function getTrendingProducts(limit = 20): Promise<Product[]> {
   return raw.map(mapProduct);
 }
 
+// ── Recent feed (Just Posted) + Near-me ─────────────────
+
+export interface RecentFeedParams {
+  limit?: number;
+  offset?: number;
+  category?: string;
+  zip?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+}
+
+export async function getRecentProducts(params: RecentFeedParams = {}): Promise<Product[]> {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  if (params.category) qs.set('category', params.category);
+  if (params.zip) qs.set('zip', params.zip);
+  if (params.lat !== undefined) qs.set('lat', String(params.lat));
+  if (params.lng !== undefined) qs.set('lng', String(params.lng));
+  if (params.radiusKm) qs.set('radius_km', String(params.radiusKm));
+  const raw = await apiFetch<ApiProduct[] | null>(`/marketplace/recent?${qs.toString()}`);
+  return (raw ?? []).map(mapProduct);
+}
+
+// ── Saved products (wishlist) ───────────────────────────
+
+export async function getSavedProducts(): Promise<Product[]> {
+  const raw = await apiFetch<ApiProduct[] | null>('/marketplace/saved');
+  return (raw ?? []).map(mapProduct);
+}
+
+export async function saveProduct(productId: string): Promise<{ saved: boolean }> {
+  return apiFetch<{ saved: boolean }>(`/marketplace/saved/${productId}`, { method: 'POST' });
+}
+
+export async function unsaveProduct(productId: string): Promise<{ saved: boolean }> {
+  return apiFetch<{ saved: boolean }>(`/marketplace/saved/${productId}`, { method: 'DELETE' });
+}
+
+// ── Connect banner state ────────────────────────────────
+
+export interface ConnectBannerState {
+  connect_complete: boolean;
+  stripe_account_id: string;
+  pending_payout_cents: number;
+  paid_payout_cents: number;
+}
+
+export async function getConnectBannerState(): Promise<ConnectBannerState> {
+  return apiFetch<ConnectBannerState>('/connect/banner-state');
+}
+
 // ── Gateway (landing page aggregate) ───────────────────
 
 export interface CategoryCount {
@@ -846,6 +912,10 @@ export async function createShopProduct(data: {
   condition?: string;
   brand?: string;
   tags?: string[];
+  category?: string;
+  location_zip?: string;
+  location_lat?: number;
+  location_lng?: number;
 }): Promise<Product> {
   const raw = await apiFetch<ApiProduct>('/shop/products', {
     method: 'POST',

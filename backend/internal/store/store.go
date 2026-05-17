@@ -1981,7 +1981,7 @@ func (s *Store) SearchProducts(q models.MarketplaceQuery) ([]models.Product, err
 		idx++
 	}
 	if q.Category != "" {
-		where = append(where, fmt.Sprintf("sale_type = $%d", idx))
+		where = append(where, fmt.Sprintf("category = $%d", idx))
 		args = append(args, q.Category)
 		idx++
 	}

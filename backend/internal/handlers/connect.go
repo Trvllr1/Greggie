@@ -88,3 +88,27 @@ func (h *ConnectHandler) GetStatus(c *fiber.Ctx) error {
 		"account_id": user.StripeAccountID,
 	})
 }
+
+// GetBannerState returns just enough info to render the non-blocking
+// "Hook up payouts" banner in MarketStudio: whether Connect is complete and
+// how many cents are pending payout. Drives a soft nudge without blocking
+// any listing or sale flow.
+//
+// GET /connect/banner-state
+func (h *ConnectHandler) GetBannerState(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	user, err := h.Store.GetUserByID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not load user"})
+	}
+
+	pending, paid, _ := h.Store.GetPayoutSummary(userID, "msp")
+	connectComplete := user.StripeOnboardingComplete && user.StripeAccountID != ""
+
+	return c.JSON(fiber.Map{
+		"connect_complete":     connectComplete,
+		"stripe_account_id":    user.StripeAccountID,
+		"pending_payout_cents": pending,
+		"paid_payout_cents":    paid,
+	})
+}

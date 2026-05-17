@@ -4,9 +4,10 @@ import type { Product } from '../data/mockData';
 import * as api from '../services/api';
 import {
   ArrowLeft, BarChart3, CheckCircle2, DollarSign, Package, Plus, Settings, Store,
-  Truck, TrendingUp, X, ShieldCheck, Tag, Archive, Save,
+  Truck, TrendingUp, X, ShieldCheck, Tag, Archive, Save, Wallet,
 } from 'lucide-react';
 import { ButterflyIcon } from './ButterflyIcon';
+import { ListingComposer } from './ListingComposer';
 
 type Tab = 'dashboard' | 'products' | 'orders' | 'analytics' | 'settings';
 
@@ -204,7 +205,17 @@ export function MarketStudio({ onExit }: Props) {
   const [analytics, setAnalytics] = useState<api.SellerAnalyticsDay[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [settingsForm, setSettingsForm] = useState({ name: '', description: '', banner_url: '', logo_url: '', return_policy: '', shipping_from: '' });
+  const [connectBanner, setConnectBanner] = useState<api.ConnectBannerState | null>(null);
   const programIsActive = program?.status === 'active';
+
+  const loadConnectBanner = useCallback(async () => {
+    try {
+      const state = await api.getConnectBannerState();
+      setConnectBanner(state);
+    } catch {
+      setConnectBanner(null);
+    }
+  }, []);
 
   const ensureAuth = useCallback(async () => {
     if (!api.getToken()) {
@@ -298,7 +309,7 @@ export function MarketStudio({ onExit }: Props) {
     (async () => {
       try {
         await ensureAuth();
-        await Promise.all([loadPrograms(), loadShop()]);
+        await Promise.all([loadPrograms(), loadShop(), loadConnectBanner()]);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to initialize Market Studio');
       } finally {
@@ -306,7 +317,7 @@ export function MarketStudio({ onExit }: Props) {
       }
     })();
     return () => { active = false; };
-  }, [ensureAuth, loadPrograms, loadShop]);
+  }, [ensureAuth, loadPrograms, loadShop, loadConnectBanner]);
 
   useEffect(() => {
     if (shop) {
@@ -382,6 +393,16 @@ export function MarketStudio({ onExit }: Props) {
     }
   };
 
+  const handleListingPublished = (product: Product) => {
+    setProducts((prev) => [product, ...prev]);
+    setShowProductModal(false);
+    // Auto-seller backend may have just created the shop; refresh so the
+    // Settings tab populates and the header chip appears.
+    void loadShop();
+    void loadPrograms();
+    void loadConnectBanner();
+  };
+
   const handleArchiveProduct = async (productId: string) => {
     try {
       await api.archiveShopProduct(productId);
@@ -442,14 +463,21 @@ export function MarketStudio({ onExit }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {shop && <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/50">{shop.name}</span>}
-          <button onClick={() => setShowProductModal(true)} disabled={!shop} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"><Plus size={14} className="inline mr-1" />Product</button>
+          <button onClick={() => setShowProductModal(true)} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-500"><Plus size={14} className="inline mr-1" />List item</button>
         </div>
       </div>
 
-      {!program && (
-        <div className="flex items-center justify-between border-b border-indigo-500/20 bg-indigo-500/10 px-5 py-3 text-sm">
-          <div className="flex items-center gap-2 text-indigo-200"><ShieldCheck size={16} className="text-indigo-400" />Join MSP to unlock seller analytics, fulfillment, and payouts.</div>
-          <button onClick={() => setShowEnrollModal(true)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-indigo-500">Join MSP</button>
+      {connectBanner && !connectBanner.connect_complete && (connectBanner.pending_payout_cents > 0 || products.length > 0) && (
+        <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-5 py-3 text-sm">
+          <div className="flex items-center gap-2 text-amber-100">
+            <Wallet size={16} className="text-amber-300" />
+            <span>
+              {connectBanner.pending_payout_cents > 0
+                ? <>You have <strong>${(connectBanner.pending_payout_cents / 100).toFixed(2)}</strong> in pending payouts. Hook up payouts (takes 2 min) to get paid.</>
+                : <>Hook up payouts so buyers can pay you directly. Takes about 2 minutes.</>}
+            </span>
+          </div>
+          <button onClick={() => setShowEnrollModal(true)} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-amber-400">Set up payouts</button>
         </div>
       )}
 
@@ -473,16 +501,15 @@ export function MarketStudio({ onExit }: Props) {
         <div className="border-b border-red-500/20 bg-red-500/10 px-5 py-2 text-sm text-red-300">{error}</div>
       )}
 
-      {!shop ? (
+      {!shop && products.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-5"><Store size={42} className="text-indigo-300" /></div>
           <div>
-            <h2 className="text-2xl font-bold">Stand up your marketplace operation</h2>
-            <p className="mt-2 max-w-xl text-sm text-white/45">Create a verified storefront, manage fulfillment, and run your MSP business from one Greggie control plane.</p>
+            <h2 className="text-2xl font-bold">Sell something in 30 seconds</h2>
+            <p className="mt-2 max-w-xl text-sm text-white/45">Snap a photo, name your price, hit publish. We&rsquo;ll set up the rest behind the scenes.</p>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => setShowShopModal(true)} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500">Create Shop</button>
-            {!program && <button onClick={() => setShowEnrollModal(true)} className="rounded-xl bg-white/5 px-5 py-3 text-sm font-semibold text-white/75 transition-colors hover:bg-white/10">Review MSP</button>}
+            <button onClick={() => setShowProductModal(true)} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"><Plus size={14} className="mr-1 inline" />List your first item</button>
           </div>
         </div>
       ) : (
@@ -681,7 +708,7 @@ export function MarketStudio({ onExit }: Props) {
         {showShopModal && <ShopModal onClose={() => setShowShopModal(false)} onSave={handleCreateShop} saving={savingShop} />}
       </AnimatePresence>
       <AnimatePresence>
-        {showProductModal && <ProductModal onClose={() => setShowProductModal(false)} onSave={handleCreateProduct} saving={savingProduct} />}
+        {showProductModal && <ListingComposer onClose={() => setShowProductModal(false)} onPublished={handleListingPublished} />}
       </AnimatePresence>
       <AnimatePresence>
         {showEnrollModal && <MSPEnrollmentModal onClose={() => setShowEnrollModal(false)} onEnroll={handleEnroll} enrolling={enrolling} />}

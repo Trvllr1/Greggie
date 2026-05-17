@@ -133,13 +133,11 @@ func (h *ShopHandler) ListMyProducts(c *fiber.Ctx) error {
 	return c.JSON(products)
 }
 
-// CreateProduct creates a new product in the user's shop.
+// CreateProduct creates a new product. If the user has no shop or MSP
+// enrollment yet, both are auto-provisioned (Facebook-Marketplace style: any
+// signed-in user can list immediately without a "set up store" gate).
 func (h *ShopHandler) CreateProduct(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-	shop, err := h.Store.GetShopByOwner(userID)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "create a shop first"})
-	}
 
 	var req models.CreateShopProductRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -154,6 +152,15 @@ func (h *ShopHandler) CreateProduct(c *fiber.Ctx) error {
 	if req.Condition == "" {
 		req.Condition = "new"
 	}
+	if req.Inventory <= 0 {
+		req.Inventory = 1
+	}
+
+	// Auto-create MSP program + shop on first listing.
+	shop, err := h.Store.EnsureSellerArtifactsForListing(userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to set up seller account"})
+	}
 
 	product := &models.Product{
 		Name:        req.Name,
@@ -165,12 +172,18 @@ func (h *ShopHandler) CreateProduct(c *fiber.Ctx) error {
 		Condition:   req.Condition,
 		Brand:       req.Brand,
 		Tags:        req.Tags,
+		Category:    req.Category,
 	}
 	if req.OriginalPrice != nil {
 		product.OriginalPrice = req.OriginalPrice
 	}
 
-	if err := h.Store.CreateShopProduct(shop.ID, product); err != nil {
+	override := store.LocationOverride{
+		Zip: req.LocationZip,
+		Lat: req.LocationLat,
+		Lng: req.LocationLng,
+	}
+	if err := h.Store.CreateShopProductWithLocation(shop.ID, product, override); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create product"})
 	}
 	product.ShopID = &shop.ID

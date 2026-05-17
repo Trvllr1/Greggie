@@ -101,6 +101,14 @@ export type Product = {
   reviews?: ProductReview[];
   relatedProducts?: Product[];
   bundles?: ProductBundle[];
+  // Marketplace simplification (FB-style location + saved)
+  shopId?: string;
+  locationZip?: string;
+  locationLat?: number;
+  locationLng?: number;
+  isSaved?: boolean;
+  distanceKm?: number;
+  createdAt?: string;
 };
 
 export type Channel = {

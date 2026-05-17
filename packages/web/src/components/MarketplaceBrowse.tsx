@@ -10,6 +10,8 @@ import type { Product } from '../data/mockData';
 import { MOCK_GATEWAY, MOCK_CHANNELS } from '../data/mockData';
 import type { MappedGateway, GatewayChannel, BillboardPlacement } from '../services/api';
 import { ButterflyIcon } from './ButterflyIcon';
+import { BrowseFeed } from './BrowseFeed';
+import { SavedItems } from './SavedItems';
 
 /* ── Constants ────────────────────────────────────────── */
 const CONDITIONS = ['All', 'new', 'like_new', 'good', 'fair'] as const;
@@ -622,6 +624,7 @@ function SearchResults({
 
 export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCount, onWatchChannel, onOpenProfile, onOpenRail, onGoToCreatorStudio, onGoToLiveView, onGoToSellerProgram }: Props) {
   /* ── State ── */
+  const [viewMode, setViewMode] = useState<'feed' | 'gateway' | 'saved'>('feed');
   const [gateway, setGateway] = useState<MappedGateway | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -927,7 +930,39 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
         </div>
       </header>
 
+      {/* ── View-mode tabs (FB-Marketplace-style top-level switcher) ── */}
+      {!searchActive && (
+        <div className="flex border-b border-white/[0.06] bg-[#0A0A0F]/90 backdrop-blur-md">
+          {([
+            { id: 'feed', label: 'Just Posted' },
+            { id: 'gateway', label: 'Featured' },
+            { id: 'saved', label: 'Saved' },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setViewMode(t.id)}
+              className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                viewMode === t.id
+                  ? 'border-b-2 border-indigo-500 bg-indigo-500/5 text-indigo-300'
+                  : 'border-b-2 border-transparent text-white/40 hover:bg-white/5 hover:text-white/75'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Content ── */}
+      {!searchActive && viewMode === 'feed' ? (
+        <div className="flex-1 overflow-hidden">
+          <BrowseFeed onViewProduct={onViewProduct} />
+        </div>
+      ) : !searchActive && viewMode === 'saved' ? (
+        <div className="flex-1 overflow-hidden">
+          <SavedItems onViewProduct={onViewProduct} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto">
         {searchActive ? (
           <SearchResults
@@ -1140,6 +1175,7 @@ export function MarketplaceBrowse({ onViewProduct, onOpenCart, onGoHome, cartCou
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

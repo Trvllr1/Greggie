@@ -284,6 +284,7 @@ func main() {
 	api.Get("/marketplace/products", marketplace.SearchProducts)
 	api.Get("/marketplace/trending", marketplace.GetTrending)
 	api.Get("/marketplace/gateway", marketplace.Gateway)
+	api.Get("/marketplace/recent", marketplace.GetRecent)
 
 	// Billboard tracking (public)
 	api.Post("/billboards/:id/impression", billboard.TrackImpression)
@@ -381,6 +382,12 @@ func main() {
 	// Stripe Connect onboarding
 	protected.Post("/connect/onboard", connect.StartOnboarding)
 	protected.Get("/connect/status", connect.GetStatus)
+	protected.Get("/connect/banner-state", connect.GetBannerState)
+
+	// Saved products (wishlist)
+	protected.Get("/marketplace/saved", marketplace.GetSaved)
+	protected.Post("/marketplace/saved/:productId", marketplace.ToggleSaved)
+	protected.Delete("/marketplace/saved/:productId", marketplace.RemoveSaved)
 
 	// Shop management (auth required)
 	protected.Post("/shops", shop.CreateShop)

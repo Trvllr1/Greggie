@@ -406,7 +406,7 @@ func cleanup(t *testing.T, s *Store) {
 	tables := []string{"fulfillment_records", "payouts", "seller_analytics_daily",
 		"seller_programs", "bids", "product_reviews", "shipping_addresses",
 		"cart_items", "carts", "events", "order_items", "orders", "checkout_sessions",
-		"follows", "products", "relay_entries", "shops", "channels", "wallets", "users"}
+		"follows", "saved_products", "products", "relay_entries", "shops", "channels", "wallets", "users"}
 	for _, tbl := range tables {
 		if _, err := s.PG.Exec("DELETE FROM " + tbl); err != nil {
 			t.Logf("cleanup %s: %v", tbl, err)

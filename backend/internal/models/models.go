@@ -94,6 +94,10 @@ type Product struct {
 	RelatedProducts     []Product             `json:"related_products,omitempty"`
 	Bundles             []ProductBundle       `json:"bundles,omitempty"`
 	Reviews             []ProductReview       `json:"reviews,omitempty"`
+	LocationZip         string                `json:"location_zip,omitempty"`
+	LocationLat         *float64              `json:"location_lat,omitempty"`
+	LocationLng         *float64              `json:"location_lng,omitempty"`
+	IsSaved             bool                  `json:"is_saved,omitempty"`
 	CreatedAt           time.Time             `json:"created_at"`
 }
 
@@ -577,6 +581,10 @@ type CreateShopProductRequest struct {
 	Condition     string   `json:"condition"`
 	Brand         string   `json:"brand"`
 	Tags          []string `json:"tags"`
+	Category      string   `json:"category"`
+	LocationZip   string   `json:"location_zip"`
+	LocationLat   *float64 `json:"location_lat,omitempty"`
+	LocationLng   *float64 `json:"location_lng,omitempty"`
 }
 
 type AddCartItemRequest struct {
