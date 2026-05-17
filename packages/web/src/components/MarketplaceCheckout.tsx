@@ -92,6 +92,11 @@ export function MarketplaceCheckout({
   const [order, setOrder] = useState<api.MarketplaceOrderResponse | null>(null);
   const [estimate, setEstimate] = useState<api.TaxEstimate | null>(null);
 
+  // ── Billing address (defaults to same as shipping) ──
+  const [billingSame, setBillingSame] = useState(true);
+  const [billing, setBilling] = useState<ShippingForm>(emptyAddress);
+  const [showBillingAddr2, setShowBillingAddr2] = useState(false);
+
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState<api.CouponResponse | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -169,6 +174,22 @@ export function MarketplaceCheckout({
       setError('Name on card is required.');
       return false;
     }
+    if (!billingSame) {
+      if (
+        !billing.full_name.trim() ||
+        !billing.address_line1.trim() ||
+        !billing.city.trim() ||
+        !billing.state.trim() ||
+        !billing.zip_code.trim()
+      ) {
+        setError('Please fill in your billing address.');
+        return false;
+      }
+      if (!/^\d{5}(-\d{4})?$/.test(billing.zip_code.trim())) {
+        setError('Please enter a valid billing ZIP code.');
+        return false;
+      }
+    }
     setError(null);
     return true;
   };
@@ -200,17 +221,20 @@ export function MarketplaceCheckout({
     setPlacing(true);
     setError(null);
     try {
+      const trimAddr = (a: ShippingForm) => ({
+        full_name: a.full_name.trim(),
+        address_line1: a.address_line1.trim(),
+        address_line2: a.address_line2.trim(),
+        city: a.city.trim(),
+        state: a.state.trim(),
+        zip_code: a.zip_code.trim(),
+        phone: a.phone.trim(),
+      });
+      const shippingTrimmed = trimAddr(address);
       const req: api.MarketplaceCheckoutRequest = {
         items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
-        shipping_address: {
-          full_name: address.full_name.trim(),
-          address_line1: address.address_line1.trim(),
-          address_line2: address.address_line2.trim(),
-          city: address.city.trim(),
-          state: address.state.trim(),
-          zip_code: address.zip_code.trim(),
-          phone: address.phone.trim(),
-        },
+        shipping_address: shippingTrimmed,
+        billing_address: billingSame ? shippingTrimmed : trimAddr(billing),
         shipping_method: shippingMethod,
         email: email.trim(),
         coupon_code: coupon?.valid ? coupon.code : undefined,
@@ -238,6 +262,36 @@ export function MarketplaceCheckout({
 
   /* ── Confirmation view ── */
   if (order) {
+    const billingSummary = billingSame ? address : billing;
+    const orderItems =
+      (order.items && order.items.length > 0
+        ? order.items.map((oi) => {
+            const match = items.find((i) => i.product.id === oi.product_id);
+            return {
+              id: oi.id,
+              name: match?.product.name ?? oi.product_id.slice(0, 8),
+              quantity: oi.quantity,
+              price_cents: oi.price_cents,
+              mediaUrl: match?.product.mediaUrl,
+            };
+          })
+        : items.map((i) => ({
+            id: i.product.id,
+            name: i.product.name,
+            quantity: i.quantity,
+            price_cents: Math.round(i.product.price * 100),
+            mediaUrl: i.product.mediaUrl,
+          }))) ?? [];
+
+    const orderSubtotal = order.subtotal_cents ?? subtotalCents;
+    const orderShipping = order.shipping_cents ?? shippingCents;
+    const orderTax = order.tax_cents ?? taxCents;
+    const orderDiscount = order.discount_cents ?? discountCents;
+    const orderTotal = order.total_cents ?? totalCents;
+    const shipMethodLabel =
+      SHIPPING_METHODS.find((m) => m.id === (order.shipping_method ?? shippingMethod))?.label ??
+      shippingInfo.label;
+
     return (
       <div
         className="fixed inset-0 z-40 flex flex-col overflow-hidden"
@@ -260,38 +314,104 @@ export function MarketplaceCheckout({
             <CheckCircle2 size={40} className="text-green-400" />
           </motion.div>
           <div className="text-center space-y-1">
-            <h2 className="text-xl font-bold text-white">Order placed</h2>
-            <p className="text-sm text-white/50">A confirmation email is on its way.</p>
+            <h2 className="text-xl font-bold text-white">Thank you, your order is placed</h2>
+            <p className="text-sm text-white/50">A confirmation email is on its way to {email}.</p>
           </div>
+
+          {/* Order details card */}
           <div className="w-full max-w-md rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
             <div className="flex justify-between text-sm">
               <span className="text-white/50">Order ID</span>
               <span className="text-white font-mono text-xs">
-                {order.id.slice(0, 8).toUpperCase()}
+                {(order.id ?? '').slice(0, 8).toUpperCase() || 'PENDING'}
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Total Paid</span>
-              <span className="text-white font-semibold">
-                ${(order.total_cents / 100).toFixed(2)}
-              </span>
+              <span className="text-white/50">Status</span>
+              <span className="text-white capitalize">{order.status ?? 'processing'}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-white/50">Delivery</span>
-              <span className="text-white">{shippingInfo.label}</span>
+              <span className="text-white">{shipMethodLabel}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/50">Ship to</span>
-              <span className="text-white text-right text-xs">
-                {address.full_name}
-                <br />
-                {address.city}, {address.state}
+            <div className="border-t border-white/10 pt-3 space-y-2">
+              {orderItems.map((oi) => (
+                <div key={oi.id} className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded bg-white/10 overflow-hidden flex-shrink-0">
+                    {oi.mediaUrl ? (
+                      <img src={oi.mediaUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <Package size={12} className="text-white/20" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-sm text-white/80 truncate flex-1">{oi.name}</span>
+                  <span className="text-xs text-white/40">×{oi.quantity}</span>
+                  <span className="text-sm text-white/70 w-16 text-right">
+                    ${((oi.price_cents * oi.quantity) / 100).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-white/10 pt-3 grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-white/50">Subtotal</span>
+              <span className="text-right text-white/80">
+                ${(orderSubtotal / 100).toFixed(2)}
+              </span>
+              {orderDiscount > 0 && (
+                <>
+                  <span className="text-green-400">Discount</span>
+                  <span className="text-right text-green-400">
+                    −${(orderDiscount / 100).toFixed(2)}
+                  </span>
+                </>
+              )}
+              <span className="text-white/50">Shipping</span>
+              <span className="text-right text-white/80">
+                ${(orderShipping / 100).toFixed(2)}
+              </span>
+              <span className="text-white/50">Tax</span>
+              <span className="text-right text-white/80">${(orderTax / 100).toFixed(2)}</span>
+              <span className="text-sm font-semibold text-white pt-1">Total</span>
+              <span className="text-right text-sm font-semibold text-white pt-1">
+                ${(orderTotal / 100).toFixed(2)}
               </span>
             </div>
           </div>
-          <p className="text-xs text-white/40 text-center">
-            Email: <span className="text-white/60">{email}</span>
-          </p>
+
+          {/* Addresses card */}
+          <div className="w-full max-w-md rounded-xl bg-white/5 border border-white/10 p-4 grid grid-cols-2 gap-3 text-xs">
+            <div className="space-y-1">
+              <p className="font-semibold text-white/50 uppercase tracking-wider">Ship to</p>
+              <p className="text-white">{address.full_name}</p>
+              <p className="text-white/70">{address.address_line1}</p>
+              {address.address_line2 && (
+                <p className="text-white/70">{address.address_line2}</p>
+              )}
+              <p className="text-white/70">
+                {address.city}, {address.state} {address.zip_code}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-semibold text-white/50 uppercase tracking-wider">Bill to</p>
+              <p className="text-white">{billingSummary.full_name || address.full_name}</p>
+              <p className="text-white/70">
+                {billingSummary.address_line1 || address.address_line1}
+              </p>
+              {(billingSummary.address_line2 || (billingSame && address.address_line2)) && (
+                <p className="text-white/70">
+                  {billingSummary.address_line2 || address.address_line2}
+                </p>
+              )}
+              <p className="text-white/70">
+                {billingSummary.city || address.city},{' '}
+                {billingSummary.state || address.state}{' '}
+                {billingSummary.zip_code || address.zip_code}
+              </p>
+            </div>
+          </div>
+
           {!isLoggedIn && onSignIn && (
             <div className="w-full max-w-md rounded-xl bg-indigo-500/10 border border-indigo-500/30 p-4 space-y-2">
               <p className="text-sm font-medium text-white">
@@ -307,7 +427,11 @@ export function MarketplaceCheckout({
           )}
           <button
             onClick={() =>
-              onComplete({ id: order.id, status: order.status, total_cents: order.total_cents })
+              onComplete({
+                id: order.id ?? '',
+                status: order.status ?? 'processing',
+                total_cents: orderTotal,
+              })
             }
             className="w-full max-w-md rounded-xl py-3.5 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 transition-colors"
           >
@@ -603,11 +727,91 @@ export function MarketplaceCheckout({
                 className={`${INPUT} pl-11`}
               />
             </div>
-            <div className="flex items-center gap-2 text-xs text-white/40">
-              <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
-              <span>Billing address same as shipping.</span>
-            </div>
+            {/* ── Billing address toggle ── */}
+            <label className="flex items-center gap-2.5 cursor-pointer select-none pt-1">
+              <span className="relative inline-flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={billingSame}
+                  onChange={(e) => setBillingSame(e.target.checked)}
+                  className="peer sr-only"
+                  aria-label="Billing address same as shipping"
+                />
+                <span className="w-4 h-4 rounded border border-white/30 bg-white/5 peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-colors flex items-center justify-center">
+                  {billingSame && <CheckCircle2 size={12} className="text-white" />}
+                </span>
+              </span>
+              <span className="text-sm text-white/70">Billing address same as shipping</span>
+            </label>
           </section>
+
+          {/* ── Billing address (when different from shipping) ── */}
+          {!billingSame && (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                Billing address
+              </h2>
+              <input
+                type="text"
+                placeholder="Full name *"
+                value={billing.full_name}
+                onChange={(e) => setBilling((p) => ({ ...p, full_name: e.target.value }))}
+                className={INPUT}
+              />
+              <input
+                type="text"
+                placeholder="Street address *"
+                value={billing.address_line1}
+                onChange={(e) => setBilling((p) => ({ ...p, address_line1: e.target.value }))}
+                className={INPUT}
+              />
+              {showBillingAddr2 ? (
+                <input
+                  type="text"
+                  placeholder="Apt, Suite, Unit (optional)"
+                  value={billing.address_line2}
+                  onChange={(e) =>
+                    setBilling((p) => ({ ...p, address_line2: e.target.value }))
+                  }
+                  className={INPUT}
+                />
+              ) : (
+                <button
+                  onClick={() => setShowBillingAddr2(true)}
+                  className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
+                >
+                  <Plus size={12} /> Add apartment, suite, etc.
+                </button>
+              )}
+              <div className="grid grid-cols-5 gap-3">
+                <input
+                  type="text"
+                  placeholder="City *"
+                  value={billing.city}
+                  onChange={(e) => setBilling((p) => ({ ...p, city: e.target.value }))}
+                  className={`col-span-2 ${INPUT}`}
+                />
+                <input
+                  type="text"
+                  placeholder="State *"
+                  maxLength={2}
+                  value={billing.state}
+                  onChange={(e) =>
+                    setBilling((p) => ({ ...p, state: e.target.value.toUpperCase() }))
+                  }
+                  className={`col-span-1 ${INPUT}`}
+                />
+                <input
+                  type="text"
+                  placeholder="ZIP *"
+                  maxLength={10}
+                  value={billing.zip_code}
+                  onChange={(e) => setBilling((p) => ({ ...p, zip_code: e.target.value }))}
+                  className={`col-span-2 ${INPUT}`}
+                />
+              </div>
+            </section>
+          )}
 
           {/* ── Coupon ── */}
           <section className="rounded-xl bg-white/5 border border-white/10 p-3">

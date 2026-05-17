@@ -1005,6 +1005,7 @@ export interface MarketplaceCheckoutItem {
 export interface MarketplaceCheckoutRequest {
   items: MarketplaceCheckoutItem[];
   shipping_address: ShippingAddressInput;
+  billing_address?: ShippingAddressInput;
   shipping_method: string;
   email: string;
   coupon_code?: string;
