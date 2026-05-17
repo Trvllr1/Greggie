@@ -259,6 +259,32 @@ type TaxEstimate struct {
 	TotalCents    int64   `json:"total_cents"`
 }
 
+// OrderPayment is one Stripe PaymentIntent for one seller's portion of an order.
+// Multi-seller carts have N OrderPayments (one per seller). Single-seller orders have one.
+type OrderPayment struct {
+	ID                 string    `json:"id"`
+	OrderID            string    `json:"order_id"`
+	SellerID           string    `json:"seller_id"`
+	ProgramType        string    `json:"program_type"`
+	CustomerCents      int64     `json:"customer_cents"`
+	GrossCents         int64     `json:"gross_cents"`
+	FeeCents           int64     `json:"fee_cents"`
+	StripeAccountID    string    `json:"stripe_account_id,omitempty"`
+	StripePaymentID    string    `json:"stripe_payment_id,omitempty"`
+	StripeClientSecret string    `json:"stripe_client_secret,omitempty"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// MarketplaceCheckoutResponse is returned by POST /checkout/marketplace.
+// The client iterates Payments and confirms each PaymentIntent via stripe.js
+// using the corresponding client_secret + stripe_account_id (for Connect).
+type MarketplaceCheckoutResponse struct {
+	Order    *Order         `json:"order"`
+	Payments []OrderPayment `json:"payments"`
+}
+
 type BidRequest struct {
 	ProductID   string `json:"product_id"`
 	AmountCents int64  `json:"amount_cents"`
