@@ -25,13 +25,16 @@ jobs:
           host: ${{ vars.OCI_HOST || '137.131.51.134' }}
           username: ubuntu
           key: ${{ secrets.OCI_SSH_KEY }}
-          script_stop: true
           script: |
             set -e
             cd ~/greggie
 
-            echo ">>> Pulling latest code..."
-            git pull origin main
+            echo ">>> Syncing to latest origin/main..."
+            # Force-sync the deploy host to origin/main so the workflow is not
+            # blocked by local edits or conflicting untracked files on the server.
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
 
             # Detect architecture and pick compose files
             ARCH=$(uname -m)
