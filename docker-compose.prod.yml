@@ -17,7 +17,14 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # Use prebuilt binary path — the OCI Micro VM (1 OCPU) cannot reliably
+      # cross-compile Go inside a container without OOMing. Build on dev/CI:
+      #   cd backend && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o greggie-backend-linux .
+      # then scp the binary to the VM before `docker compose up -d` (see
+      # infra/build-and-deploy.sh).
+      dockerfile: Dockerfile.prebuilt
     expose:
       - "8080"
     env_file: .env
