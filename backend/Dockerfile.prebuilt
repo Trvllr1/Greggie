@@ -1,0 +1,6 @@
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+COPY greggie-backend-linux /greggie-backend
+RUN chmod +x /greggie-backend
+EXPOSE 8080
+CMD ["/greggie-backend"]

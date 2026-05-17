@@ -47,24 +47,19 @@ paths:
 ###############################################
 # Authentication (publish-only) via backend hook.
 #
-# IMPORTANT: This block is commented out by default. Enable AFTER deploying the
-# backend with the /internal/streams/auth endpoint AND confirming MediaMTX version
-# on the OCI box supports `authMethod: http` (v1.0+).
+# Validated 2026-05-17 on OCI VM: backend /internal/streams/auth rejects
+# unknown stream keys (401 invalid stream key) and accepts real keys (200 OK).
+# /internal/* is NOT exposed via Caddy; only mediamtx (same docker network)
+# can reach the auth endpoint.
 #
-# To enable:
-#   1. Uncomment the block below.
-#   2. (Optional) Set MEDIAMTX_AUTH_TOKEN in backend .env and append ?token=<value> to authHTTPAddress.
-#   3. Restart MediaMTX: `docker compose -f docker-compose.prod.yml restart mediamtx`
-#   4. Test by trying to publish with a fake stream key — should reject; real key — should accept.
-#
-# Without this enabled, ANYONE who can reach :1935 (RTMP) or :8889 (WHIP) can publish
-# to any path. Only the stream key path itself provides obscurity, which is not security.
-#
-# authMethod: http
-# authHTTPAddress: http://backend:8080/internal/streams/auth
-# authHTTPExclude:
-#   - action: api
-#   - action: metrics
-#   - action: pprof
-#   - action: read     # HLS playback is public — don't auth it
-#   - action: playback
+# Optional: set MEDIAMTX_AUTH_TOKEN in backend env and append ?token=<value>
+# to authHTTPAddress for an extra shared-secret check.
+
+authMethod: http
+authHTTPAddress: http://backend:8080/internal/streams/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+  - action: read     # HLS playback is public — don't auth it
+  - action: playback
