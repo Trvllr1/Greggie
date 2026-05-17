@@ -254,8 +254,12 @@ export function MarketplaceCheckout({
   const shippingCents = estimate?.shipping_cents ?? shippingInfo.cents;
   const discountCents = estimate?.discount_cents ?? (coupon?.valid ? coupon.discount_cents : 0);
   const taxCents = estimate?.tax_cents ?? 0;
+  const serviceFeeCents =
+    estimate?.service_fee_cents ??
+    Math.min(500, Math.round(Math.max(0, subtotalCents - discountCents) * 0.04));
   const totalCents =
-    estimate?.total_cents ?? (subtotalCents - discountCents + shippingCents + taxCents);
+    estimate?.total_cents ??
+    (subtotalCents - discountCents + shippingCents + taxCents + serviceFeeCents);
   const taxLabel = estimate?.tax_source === 'stripe_tax' ? 'Tax' : 'Est. tax';
   const cardBrand = getCardBrand(payment.card_number);
   const maskedCard = payment.card_number.replace(/\s/g, '').slice(-4);
@@ -287,6 +291,7 @@ export function MarketplaceCheckout({
     const orderShipping = order.shipping_cents ?? shippingCents;
     const orderTax = order.tax_cents ?? taxCents;
     const orderDiscount = order.discount_cents ?? discountCents;
+    const orderServiceFee = order.service_fee_cents ?? serviceFeeCents;
     const orderTotal = order.total_cents ?? totalCents;
     const shipMethodLabel =
       SHIPPING_METHODS.find((m) => m.id === (order.shipping_method ?? shippingMethod))?.label ??
@@ -373,6 +378,14 @@ export function MarketplaceCheckout({
               </span>
               <span className="text-white/50">Tax</span>
               <span className="text-right text-white/80">${(orderTax / 100).toFixed(2)}</span>
+              {orderServiceFee > 0 && (
+                <>
+                  <span className="text-white/50">Service fee</span>
+                  <span className="text-right text-white/80">
+                    ${(orderServiceFee / 100).toFixed(2)}
+                  </span>
+                </>
+              )}
               <span className="text-sm font-semibold text-white pt-1">Total</span>
               <span className="text-right text-sm font-semibold text-white pt-1">
                 ${(orderTotal / 100).toFixed(2)}
@@ -915,6 +928,14 @@ export function MarketplaceCheckout({
             <span className="text-right text-white/80">
               ${(taxCents / 100).toFixed(2)}
             </span>
+            {serviceFeeCents > 0 && (
+              <>
+                <span>Service fee</span>
+                <span className="text-right text-white/80">
+                  ${(serviceFeeCents / 100).toFixed(2)}
+                </span>
+              </>
+            )}
           </div>
           <div className="h-px bg-white/10" />
           <div className="flex items-center justify-between">

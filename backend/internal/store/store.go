@@ -2464,14 +2464,14 @@ func (s *Store) MarketplaceCheckoutAtomic(o *models.Order, allocations []SellerA
 		`INSERT INTO orders (user_id, channel_id, seller_id, status, total_cents, subtotal_cents,
 		  shipping_cents, tax_cents, shipping_address_id, shipping_method, email,
 		  platform_fee_cents, stripe_payment_id, stripe_client_secret, idempotency_key,
-		  coupon_id, discount_cents)
+		  coupon_id, discount_cents, service_fee_cents)
 		 VALUES (NULLIF($1,'')::uuid, NULLIF($2,'')::uuid, NULLIF($3,'')::uuid, $4, $5, $6, $7, $8, NULLIF($9,'')::uuid, NULLIF($10,''),
-		  NULLIF($11,''), $12, $13, $14, NULLIF($15,''), NULLIF($16,'')::uuid, $17)
+		  NULLIF($11,''), $12, $13, $14, NULLIF($15,''), NULLIF($16,'')::uuid, $17, $18)
 		 RETURNING id, created_at`,
 		o.UserID, o.ChannelID, o.SellerID, o.Status, o.TotalCents, o.SubtotalCents,
 		o.ShippingCents, o.TaxCents, o.ShippingAddressID, o.ShippingMethod, o.Email,
 		o.PlatformFeeCents, o.StripePaymentID, o.StripeClientSecret, o.IdempotencyKey,
-		o.CouponID, o.DiscountCents,
+		o.CouponID, o.DiscountCents, o.ServiceFeeCents,
 	).Scan(&o.ID, &o.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)

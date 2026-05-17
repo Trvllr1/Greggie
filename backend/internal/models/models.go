@@ -122,6 +122,7 @@ type Order struct {
 	ShippingAddressID  string      `json:"shipping_address_id,omitempty"`
 	ShippingMethod     string      `json:"shipping_method,omitempty"`
 	Email              string      `json:"email,omitempty"`
+	ServiceFeeCents    int64       `json:"service_fee_cents,omitempty"`
 	PlatformFeeCents   int64       `json:"platform_fee_cents,omitempty"`
 	StripePaymentID    string      `json:"stripe_payment_id,omitempty"`
 	StripeClientSecret string      `json:"stripe_client_secret,omitempty"`
@@ -254,13 +255,14 @@ type ShippingAddressInput struct {
 }
 
 type TaxEstimate struct {
-	SubtotalCents int64   `json:"subtotal_cents"`
-	ShippingCents int64   `json:"shipping_cents"`
-	TaxCents      int64   `json:"tax_cents"`
-	TaxRate       float64 `json:"tax_rate"`
-	TaxSource     string  `json:"tax_source,omitempty"`
-	DiscountCents int64   `json:"discount_cents"`
-	TotalCents    int64   `json:"total_cents"`
+	SubtotalCents   int64   `json:"subtotal_cents"`
+	ShippingCents   int64   `json:"shipping_cents"`
+	TaxCents        int64   `json:"tax_cents"`
+	TaxRate         float64 `json:"tax_rate"`
+	TaxSource       string  `json:"tax_source,omitempty"`
+	DiscountCents   int64   `json:"discount_cents"`
+	ServiceFeeCents int64   `json:"service_fee_cents"`
+	TotalCents      int64   `json:"total_cents"`
 }
 
 // OrderPayment is one Stripe PaymentIntent for one seller's portion of an order.

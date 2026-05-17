@@ -209,7 +209,8 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate tax"})
 	}
-	totalCents := subtotalCents - discountCents + shippingCents + taxCents
+	serviceFeeCents := calcServiceFee(subtotalCents - discountCents)
+	totalCents := subtotalCents - discountCents + shippingCents + taxCents + serviceFeeCents
 	if totalCents < 0 {
 		totalCents = 0
 	}
@@ -315,6 +316,7 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 		Email:             req.Email,
 		CouponID:          couponID,
 		DiscountCents:     discountCents,
+		ServiceFeeCents:   serviceFeeCents,
 		IdempotencyKey:    idempotencyKey,
 		Items:             orderItems,
 	}
@@ -455,19 +457,21 @@ func (h *CheckoutHandler) EstimateTax(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to calculate tax"})
 	}
-	totalCents := subtotalCents - discountCents + shippingCents + taxCents
+	serviceFeeCents := calcServiceFee(subtotalCents - discountCents)
+	totalCents := subtotalCents - discountCents + shippingCents + taxCents + serviceFeeCents
 	if totalCents < 0 {
 		totalCents = 0
 	}
 
 	return c.JSON(models.TaxEstimate{
-		SubtotalCents: subtotalCents,
-		ShippingCents: shippingCents,
-		TaxCents:      taxCents,
-		TaxRate:       taxRate,
-		TaxSource:     taxSource,
-		DiscountCents: discountCents,
-		TotalCents:    totalCents,
+		SubtotalCents:   subtotalCents,
+		ShippingCents:   shippingCents,
+		TaxCents:        taxCents,
+		TaxRate:         taxRate,
+		TaxSource:       taxSource,
+		DiscountCents:   discountCents,
+		ServiceFeeCents: serviceFeeCents,
+		TotalCents:      totalCents,
 	})
 }
 
@@ -644,22 +648,64 @@ func contains(s, substr string) bool {
 // takes from a seller's gross. Tier comes from their SellerProgram; rate comes
 // from the active CommissionRule for (program_type, tier). Falls back to 15%
 // if either lookup misses so the order doesn't fail on a missing config row.
+//
+// Adjustments stacked on top of the base commission:
+//   - CSP 90-day honeymoon: any CSP seller whose program is still inside its
+//     first 90 days (from approved_at, falling back to created_at) gets the
+//     'rising' rate (15%) instead of the default 'new' rate (20%). Lowers
+//     acquisition friction without permanently discounting all new sellers.
+//   - Payment-fee markup: every allocation has 0.5% of gross + $0.15 added
+//     on top of the commission to recoup the spread between what we charge
+//     sellers and what Stripe charges us (2.9% + $0.30).
 func (h *CheckoutHandler) commissionFor(sellerID, programType string, grossCents int64) int64 {
-	const fallbackPct = 15.0
+	const (
+		fallbackPct       = 15.0
+		paymentMarkupPct  = 0.5
+		paymentMarkupFlat = int64(15)
+		honeymoonDays     = 90
+	)
 	tier := "standard"
-	if sp, err := h.Store.GetSellerProgram(sellerID, programType); err == nil && sp != nil && sp.Tier != "" {
-		tier = sp.Tier
+	var sp *models.SellerProgram
+	if got, err := h.Store.GetSellerProgram(sellerID, programType); err == nil && got != nil && got.Tier != "" {
+		sp = got
+		tier = got.Tier
+	}
+	// CSP honeymoon — new sellers in their first 90 days pay the rising-tier rate.
+	if sp != nil && programType == "csp" && tier == "new" {
+		ref := sp.CreatedAt
+		if sp.ApprovedAt != nil && !sp.ApprovedAt.IsZero() {
+			ref = *sp.ApprovedAt
+		}
+		if !ref.IsZero() && time.Since(ref) <= time.Duration(honeymoonDays)*24*time.Hour {
+			tier = "rising"
+		}
 	}
 	pct := fallbackPct
 	if rule, err := h.Store.GetCommissionRule(programType, tier); err == nil && rule != nil && rule.CommissionPct > 0 {
 		pct = rule.CommissionPct
 	}
 	fee := int64(math.Round(float64(grossCents) * pct / 100.0))
+	// Payment-fee markup on top of commission.
+	fee += int64(math.Round(float64(grossCents)*paymentMarkupPct/100.0)) + paymentMarkupFlat
 	if fee < 0 {
 		fee = 0
 	}
 	if fee > grossCents {
 		fee = grossCents
+	}
+	return fee
+}
+
+// calcServiceFee returns the buyer-side platform service fee (in cents) for a
+// given pre-tax subtotal (after discount). 4% capped at $5.00. Returns 0 for
+// non-positive inputs.
+func calcServiceFee(netSubtotalCents int64) int64 {
+	if netSubtotalCents <= 0 {
+		return 0
+	}
+	fee := int64(math.Round(float64(netSubtotalCents) * 4.0 / 100.0))
+	if fee > 500 {
+		fee = 500
 	}
 	return fee
 }

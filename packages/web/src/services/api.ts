@@ -1019,6 +1019,7 @@ export interface MarketplaceOrderResponse {
   shipping_cents: number;
   tax_cents: number;
   discount_cents: number;
+  service_fee_cents: number;
   shipping_method: string;
   items: { id: string; product_id: string; quantity: number; price_cents: number }[];
   created_at: string;
@@ -1038,6 +1039,7 @@ export interface TaxEstimate {
   tax_rate: number;
   tax_source?: string;
   discount_cents: number;
+  service_fee_cents: number;
   total_cents: number;
 }
 
