@@ -118,7 +118,9 @@ func GetAccountStatus(accountID string) (bool, error) {
 }
 
 // CreatePaymentIntent creates a PaymentIntent with optional Connect destination.
-func CreatePaymentIntent(amountCents int64, currency string, sellerAccountID string, platformFeeCents int64, idempotencyKey string, metadata map[string]string) (string, string, error) {
+// transferGroup links multiple PaymentIntents that share an order so payouts can
+// be reconciled together; pass "" if not needed.
+func CreatePaymentIntent(amountCents int64, currency string, sellerAccountID string, platformFeeCents int64, transferGroup string, idempotencyKey string, metadata map[string]string) (string, string, error) {
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(amountCents),
 		Currency: stripe.String(currency),
@@ -133,6 +135,10 @@ func CreatePaymentIntent(amountCents int64, currency string, sellerAccountID str
 			Destination: stripe.String(sellerAccountID),
 		}
 		params.ApplicationFeeAmount = stripe.Int64(platformFeeCents)
+	}
+
+	if transferGroup != "" {
+		params.TransferGroup = stripe.String(transferGroup)
 	}
 
 	// Idempotency

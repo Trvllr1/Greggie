@@ -88,7 +88,7 @@ func (h *CheckoutHandler) InitCheckout(c *fiber.Ctx) error {
 			"channel_id": req.ChannelID,
 		}
 		piID, clientSecret, err := payments.CreatePaymentIntent(
-			totalCents, "usd", stripeAccountID, platformFeeCents, idempotencyKey, metadata,
+			totalCents, "usd", stripeAccountID, platformFeeCents, order.ID, idempotencyKey, metadata,
 		)
 		if err != nil {
 			// Rollback: restore inventory and fail the order
@@ -216,9 +216,96 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 
 	idempotencyKey := uuid.New().String()
 
+	// Build per-seller allocations. Each item is mapped to its seller (shop owner
+	// for MSP, channel creator for CSP). Items from the same (seller, program)
+	// pair are aggregated into one sub-payment.
+	type allocKey struct{ sellerID, programType string }
+	type allocAcc struct {
+		stripeAccountID string
+		grossCents      int64
+		units           int64
+	}
+	allocMap := make(map[allocKey]*allocAcc)
+	keyOrder := []allocKey{} // stable ordering for deterministic responses
+
+	for _, item := range orderItems {
+		sellerID, programType, stripeAcct, lerr := h.Store.GetSellerForProductDetailed(item.ProductID)
+		if lerr != nil || sellerID == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "product " + item.ProductID + " has no seller",
+			})
+		}
+		k := allocKey{sellerID, programType}
+		acc, ok := allocMap[k]
+		if !ok {
+			acc = &allocAcc{stripeAccountID: stripeAcct}
+			allocMap[k] = acc
+			keyOrder = append(keyOrder, k)
+		}
+		acc.grossCents += item.PriceCents * int64(item.Quantity)
+		acc.units += int64(item.Quantity)
+	}
+
+	// Pro-rate shipping + tax − discount across sellers by gross weight. Use
+	// integer largest-remainder allocation so the per-seller customer_cents sum
+	// equals totalCents exactly (no fractional cents lost or duplicated).
+	extra := shippingCents + taxCents - discountCents // signed; can be negative if discount > shipping+tax
+	allocations := make([]store.SellerAllocation, 0, len(keyOrder))
+	if subtotalCents > 0 && len(keyOrder) > 0 {
+		assigned := int64(0)
+		// First pass: floor allocation
+		shares := make([]int64, len(keyOrder))
+		for i, k := range keyOrder {
+			share := extra * allocMap[k].grossCents / subtotalCents
+			shares[i] = share
+			assigned += share
+		}
+		// Distribute remainder to largest gross sellers
+		remainder := extra - assigned
+		if remainder != 0 {
+			// give +/-1 cent to sellers with largest gross until remainder consumed
+			step := int64(1)
+			if remainder < 0 {
+				step = -1
+				remainder = -remainder
+			}
+			// indices sorted by gross descending
+			order := make([]int, len(keyOrder))
+			for i := range order {
+				order[i] = i
+			}
+			for i := 0; i < len(order); i++ {
+				for j := i + 1; j < len(order); j++ {
+					if allocMap[keyOrder[order[j]]].grossCents > allocMap[keyOrder[order[i]]].grossCents {
+						order[i], order[j] = order[j], order[i]
+					}
+				}
+			}
+			for r := int64(0); r < remainder; r++ {
+				shares[order[int(r)%len(order)]] += step
+			}
+		}
+		for i, k := range keyOrder {
+			acc := allocMap[k]
+			customer := acc.grossCents + shares[i]
+			if customer < 0 {
+				customer = 0
+			}
+			fee := h.commissionFor(k.sellerID, k.programType, acc.grossCents)
+			allocations = append(allocations, store.SellerAllocation{
+				SellerID:        k.sellerID,
+				ProgramType:     k.programType,
+				StripeAccountID: acc.stripeAccountID,
+				CustomerCents:   customer,
+				GrossCents:      acc.grossCents,
+				FeeCents:        fee,
+			})
+		}
+	}
+
 	order := &models.Order{
 		UserID:            userID,
-		Status:            "processing",
+		Status:            "pending",
 		SubtotalCents:     subtotalCents,
 		ShippingCents:     shippingCents,
 		TaxCents:          taxCents,
@@ -228,15 +315,16 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 		Email:             req.Email,
 		CouponID:          couponID,
 		DiscountCents:     discountCents,
-		PlatformFeeCents:  totalCents / 10,
 		IdempotencyKey:    idempotencyKey,
 		Items:             orderItems,
 	}
 
-	if err := h.Store.MarketplaceCheckoutAtomic(order); err != nil {
+	subPayments, err := h.Store.MarketplaceCheckoutAtomic(order, allocations)
+	if err != nil {
 		if contains(err.Error(), "insufficient inventory") {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
 		}
+		slog.Error("marketplace checkout: atomic step failed", "err", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "checkout failed"})
 	}
 
@@ -253,11 +341,70 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 			slog.Error("checkout: failed to create Stripe tax transaction", "order_id", order.ID, "err", err)
 		}
 	}
-	if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
-		slog.Error("checkout: failed to create seller artifacts for marketplace order", "order_id", order.ID, "err", err)
+
+	// Create one PaymentIntent per seller (Stripe Connect destination charge).
+	// When Stripe is not configured OR the seller has no Connect account, mark
+	// the sub-payment succeeded immediately and create payouts/analytics — this
+	// preserves dev-mode behavior so the order flow is testable without Stripe.
+	for i := range subPayments {
+		op := &subPayments[i]
+		canCharge := payments.Enabled() && op.StripeAccountID != ""
+		if canCharge {
+			metadata := map[string]string{
+				"order_id":     order.ID,
+				"seller_id":    op.SellerID,
+				"program_type": op.ProgramType,
+			}
+			piID, clientSecret, perr := payments.CreatePaymentIntent(
+				op.CustomerCents, "usd", op.StripeAccountID, op.FeeCents,
+				order.ID,                       // transfer_group
+				order.ID+":"+op.SellerID,       // idempotency key
+				metadata,
+			)
+			if perr != nil {
+				// Roll back the entire order: restore inventory, cancel any PIs
+				// we already created for sibling sellers, mark everything failed.
+				slog.Error("marketplace checkout: payment intent failed", "order_id", order.ID, "seller_id", op.SellerID, "err", perr)
+				for j := 0; j < i; j++ {
+					if sib := &subPayments[j]; sib.StripePaymentID != "" {
+						_ = payments.CancelPaymentIntent(sib.StripePaymentID)
+						_ = h.Store.UpdateOrderPaymentStatus(sib.ID, "canceled")
+					}
+				}
+				_ = h.Store.RestoreInventory(order.ID)
+				_ = h.Store.UpdateOrderStatus(order.ID, "failed")
+				_ = h.Store.UpdateOrderPaymentStatus(op.ID, "failed")
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "payment setup failed"})
+			}
+			op.StripePaymentID = piID
+			op.StripeClientSecret = clientSecret
+			op.Status = "processing"
+			_ = h.Store.UpdateOrderPaymentStripe(op.ID, piID, clientSecret)
+		} else {
+			// Dev mode or unconnected seller: mark succeeded + create artifacts now.
+			op.Status = "succeeded"
+			_ = h.Store.UpdateOrderPaymentStatus(op.ID, "succeeded")
+			if err := h.Store.CreatePayoutForOrderPayment(op); err != nil {
+				slog.Error("checkout: failed to create seller artifacts", "order_id", order.ID, "seller_id", op.SellerID, "err", err)
+			}
+		}
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(order)
+	// If every sub-payment is already succeeded (full dev-mode path), flip the
+	// order to confirmed so downstream UI doesn't show "pending" forever.
+	allDone, _ := h.Store.AllOrderPaymentsSucceeded(order.ID)
+	if allDone {
+		_ = h.Store.UpdateOrderStatus(order.ID, "confirmed")
+		order.Status = "confirmed"
+	} else {
+		_ = h.Store.UpdateOrderStatus(order.ID, "processing")
+		order.Status = "processing"
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(models.MarketplaceCheckoutResponse{
+		Order:    order,
+		Payments: subPayments,
+	})
 }
 
 // EstimateTax returns a tax/shipping estimate for the cart
@@ -491,4 +638,28 @@ func isTaxAddressComplete(addr models.ShippingAddressInput) bool {
 
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// commissionFor returns the application_fee_amount (in cents) the platform
+// takes from a seller's gross. Tier comes from their SellerProgram; rate comes
+// from the active CommissionRule for (program_type, tier). Falls back to 15%
+// if either lookup misses so the order doesn't fail on a missing config row.
+func (h *CheckoutHandler) commissionFor(sellerID, programType string, grossCents int64) int64 {
+	const fallbackPct = 15.0
+	tier := "standard"
+	if sp, err := h.Store.GetSellerProgram(sellerID, programType); err == nil && sp != nil && sp.Tier != "" {
+		tier = sp.Tier
+	}
+	pct := fallbackPct
+	if rule, err := h.Store.GetCommissionRule(programType, tier); err == nil && rule != nil && rule.CommissionPct > 0 {
+		pct = rule.CommissionPct
+	}
+	fee := int64(math.Round(float64(grossCents) * pct / 100.0))
+	if fee < 0 {
+		fee = 0
+	}
+	if fee > grossCents {
+		fee = grossCents
+	}
+	return fee
 }

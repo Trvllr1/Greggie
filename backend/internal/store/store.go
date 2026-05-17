@@ -1473,6 +1473,25 @@ func (s *Store) GetOrderByStripePaymentID(paymentID string) (*models.Order, erro
 	return o, nil
 }
 
+func (s *Store) GetOrderByID(orderID string) (*models.Order, error) {
+	o := &models.Order{}
+	err := s.PG.QueryRow(
+		`SELECT id, COALESCE(user_id::text, ''), COALESCE(channel_id::text, ''),
+		        COALESCE(seller_id::text, ''), status, total_cents,
+		        COALESCE(subtotal_cents, 0), COALESCE(shipping_cents, 0), COALESCE(tax_cents, 0),
+		        COALESCE(email, ''), platform_fee_cents,
+		        COALESCE(stripe_payment_id, ''), COALESCE(stripe_client_secret, ''),
+		        COALESCE(idempotency_key, ''), created_at
+		 FROM orders WHERE id = $1`, orderID,
+	).Scan(&o.ID, &o.UserID, &o.ChannelID, &o.SellerID, &o.Status, &o.TotalCents,
+		&o.SubtotalCents, &o.ShippingCents, &o.TaxCents, &o.Email, &o.PlatformFeeCents,
+		&o.StripePaymentID, &o.StripeClientSecret, &o.IdempotencyKey, &o.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return o, nil
+}
+
 func (s *Store) SellerOwnsOrder(userID, orderID string) (bool, error) {
 	var allowed bool
 	err := s.PG.QueryRow(
@@ -2399,10 +2418,23 @@ func (s *Store) IncrementCouponUses(couponID string) error {
 
 // ── Marketplace Checkout (multi-item with shipping/tax) ──
 
-func (s *Store) MarketplaceCheckoutAtomic(o *models.Order) error {
+// SellerAllocation represents one seller's portion of a marketplace order, as
+// computed by the handler. The store persists these as order_payments rows in
+// the same transaction as the order itself so a successful checkout always has
+// a complete payment plan.
+type SellerAllocation struct {
+	SellerID        string
+	ProgramType     string
+	StripeAccountID string
+	CustomerCents   int64
+	GrossCents      int64
+	FeeCents        int64
+}
+
+func (s *Store) MarketplaceCheckoutAtomic(o *models.Order, allocations []SellerAllocation) ([]models.OrderPayment, error) {
 	tx, err := s.PG.Begin()
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -2413,17 +2445,17 @@ func (s *Store) MarketplaceCheckoutAtomic(o *models.Order) error {
 			`SELECT inventory FROM products WHERE id = $1 FOR UPDATE`, item.ProductID,
 		).Scan(&inventory)
 		if err != nil {
-			return fmt.Errorf("product %s not found", item.ProductID)
+			return nil, fmt.Errorf("product %s not found", item.ProductID)
 		}
 		if inventory < item.Quantity {
-			return fmt.Errorf("insufficient inventory for product %s", item.ProductID)
+			return nil, fmt.Errorf("insufficient inventory for product %s", item.ProductID)
 		}
 		_, err = tx.Exec(
 			`UPDATE products SET inventory = inventory - $1 WHERE id = $2`,
 			item.Quantity, item.ProductID,
 		)
 		if err != nil {
-			return fmt.Errorf("decrement inventory: %w", err)
+			return nil, fmt.Errorf("decrement inventory: %w", err)
 		}
 	}
 
@@ -2442,7 +2474,7 @@ func (s *Store) MarketplaceCheckoutAtomic(o *models.Order) error {
 		o.CouponID, o.DiscountCents,
 	).Scan(&o.ID, &o.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("create order: %w", err)
+		return nil, fmt.Errorf("create order: %w", err)
 	}
 
 	// Create order items
@@ -2455,11 +2487,208 @@ func (s *Store) MarketplaceCheckoutAtomic(o *models.Order) error {
 			item.OrderID, item.ProductID, item.Quantity, item.PriceCents,
 		).Scan(&item.ID)
 		if err != nil {
-			return fmt.Errorf("create order item: %w", err)
+			return nil, fmt.Errorf("create order item: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	// Create per-seller order_payments rows
+	payments := make([]models.OrderPayment, 0, len(allocations))
+	for _, a := range allocations {
+		op := models.OrderPayment{
+			OrderID:         o.ID,
+			SellerID:        a.SellerID,
+			ProgramType:     a.ProgramType,
+			CustomerCents:   a.CustomerCents,
+			GrossCents:      a.GrossCents,
+			FeeCents:        a.FeeCents,
+			StripeAccountID: a.StripeAccountID,
+			Status:          "pending",
+		}
+		err = tx.QueryRow(
+			`INSERT INTO order_payments
+			   (order_id, seller_id, program_type, customer_cents, gross_cents, fee_cents,
+			    stripe_account_id, status)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			 RETURNING id, created_at, updated_at`,
+			op.OrderID, op.SellerID, op.ProgramType, op.CustomerCents, op.GrossCents, op.FeeCents,
+			op.StripeAccountID, op.Status,
+		).Scan(&op.ID, &op.CreatedAt, &op.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("create order_payment: %w", err)
+		}
+		payments = append(payments, op)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return payments, nil
+}
+
+// GetSellerForProductDetailed returns the seller info for a product, covering
+// both shop-owned (MSP) and channel-owned (CSP) products.
+func (s *Store) GetSellerForProductDetailed(productID string) (sellerID, programType, stripeAccountID string, err error) {
+	err = s.PG.QueryRow(
+		`SELECT
+		   COALESCE(sh.owner_id::text, c.creator_id::text, '') AS seller_id,
+		   CASE WHEN p.shop_id IS NOT NULL THEN 'msp' ELSE 'csp' END AS program_type,
+		   COALESCE(u.stripe_account_id, '')
+		 FROM products p
+		 LEFT JOIN shops    sh ON sh.id = p.shop_id
+		 LEFT JOIN channels c  ON c.id  = p.channel_id
+		 LEFT JOIN users    u  ON u.id  = COALESCE(sh.owner_id, c.creator_id)
+		 WHERE p.id = $1`,
+		productID,
+	).Scan(&sellerID, &programType, &stripeAccountID)
+	return
+}
+
+// UpdateOrderPaymentStripe records the Stripe PI ID and client_secret on a sub-payment.
+func (s *Store) UpdateOrderPaymentStripe(id, piID, clientSecret string) error {
+	_, err := s.PG.Exec(
+		`UPDATE order_payments
+		 SET stripe_payment_id = $1, stripe_client_secret = $2, status = 'processing', updated_at = NOW()
+		 WHERE id = $3`,
+		piID, clientSecret, id,
+	)
+	return err
+}
+
+// UpdateOrderPaymentStatus transitions a sub-payment status (succeeded/failed/canceled).
+func (s *Store) UpdateOrderPaymentStatus(id, status string) error {
+	_, err := s.PG.Exec(
+		`UPDATE order_payments SET status = $1, updated_at = NOW() WHERE id = $2`,
+		status, id,
+	)
+	return err
+}
+
+// GetOrderPaymentByStripePI looks up an order_payment by its Stripe PI ID.
+// Used by the webhook to dispatch payment_intent.* events to the right sub-payment.
+func (s *Store) GetOrderPaymentByStripePI(piID string) (*models.OrderPayment, error) {
+	if piID == "" {
+		return nil, sql.ErrNoRows
+	}
+	var op models.OrderPayment
+	err := s.PG.QueryRow(
+		`SELECT id, order_id::text, seller_id, program_type, customer_cents, gross_cents, fee_cents,
+		        stripe_account_id, stripe_payment_id, stripe_client_secret, status, created_at, updated_at
+		 FROM order_payments WHERE stripe_payment_id = $1`,
+		piID,
+	).Scan(&op.ID, &op.OrderID, &op.SellerID, &op.ProgramType, &op.CustomerCents, &op.GrossCents, &op.FeeCents,
+		&op.StripeAccountID, &op.StripePaymentID, &op.StripeClientSecret, &op.Status, &op.CreatedAt, &op.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &op, nil
+}
+
+// GetOrderPayments returns all sub-payments for an order, ordered by creation.
+func (s *Store) GetOrderPayments(orderID string) ([]models.OrderPayment, error) {
+	rows, err := s.PG.Query(
+		`SELECT id, order_id::text, seller_id, program_type, customer_cents, gross_cents, fee_cents,
+		        stripe_account_id, stripe_payment_id, stripe_client_secret, status, created_at, updated_at
+		 FROM order_payments WHERE order_id = $1 ORDER BY created_at`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.OrderPayment
+	for rows.Next() {
+		var op models.OrderPayment
+		if err := rows.Scan(&op.ID, &op.OrderID, &op.SellerID, &op.ProgramType, &op.CustomerCents, &op.GrossCents, &op.FeeCents,
+			&op.StripeAccountID, &op.StripePaymentID, &op.StripeClientSecret, &op.Status, &op.CreatedAt, &op.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, op)
+	}
+	return out, rows.Err()
+}
+
+// AllOrderPaymentsSucceeded returns true iff every order_payment for the order has status='succeeded'.
+func (s *Store) AllOrderPaymentsSucceeded(orderID string) (bool, error) {
+	var pending int
+	err := s.PG.QueryRow(
+		`SELECT COUNT(*) FROM order_payments WHERE order_id = $1 AND status <> 'succeeded'`,
+		orderID,
+	).Scan(&pending)
+	if err != nil {
+		return false, err
+	}
+	return pending == 0, nil
+}
+
+// CreatePayoutForOrderPayment writes the payout + analytics rows for a single
+// confirmed sub-payment. Idempotent: returns nil if a payout already exists for
+// (user_id, program_type, order_id).
+func (s *Store) CreatePayoutForOrderPayment(op *models.OrderPayment) error {
+	if op.SellerID == "" {
+		return nil
+	}
+
+	sp, err := s.GetSellerProgram(op.SellerID, op.ProgramType)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	if sp.Status == "rejected" || sp.Status == "closed" {
+		return nil
+	}
+
+	var exists bool
+	if err := s.PG.QueryRow(
+		`SELECT EXISTS(
+		   SELECT 1 FROM payouts WHERE user_id = $1 AND program_type = $2 AND order_id = $3
+		 )`,
+		op.SellerID, op.ProgramType, op.OrderID,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	// fee_cents on the order_payment is the authoritative commission — it's what
+	// Stripe withheld as application_fee. Use it directly so the books match.
+	commissionCents := op.FeeCents
+	netCents := op.GrossCents - commissionCents
+	if netCents < 0 {
+		netCents = 0
+	}
+
+	if err := s.CreatePayout(&models.Payout{
+		UserID:          op.SellerID,
+		ProgramType:     op.ProgramType,
+		OrderID:         op.OrderID,
+		GrossCents:      op.GrossCents,
+		CommissionCents: commissionCents,
+		NetCents:        netCents,
+		PayoutStatus:    "pending",
+	}); err != nil {
+		return err
+	}
+
+	var createdAt time.Time
+	if err := s.PG.QueryRow(`SELECT created_at FROM orders WHERE id = $1`, op.OrderID).Scan(&createdAt); err != nil {
+		return err
+	}
+	analyticsDate := createdAt.Format("2006-01-02")
+	if _, err := s.PG.Exec(
+		`INSERT INTO seller_analytics_daily (user_id, program_type, date, revenue_cents, orders_count, units_sold, views, conversion_rate)
+		 VALUES ($1, $2, $3::date, $4, 1, 0, 0, 0)
+		 ON CONFLICT (user_id, program_type, date)
+		 DO UPDATE SET
+		   revenue_cents = seller_analytics_daily.revenue_cents + EXCLUDED.revenue_cents,
+		   orders_count  = seller_analytics_daily.orders_count  + EXCLUDED.orders_count`,
+		op.SellerID, op.ProgramType, analyticsDate, op.GrossCents,
+	); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ── Helpers ──

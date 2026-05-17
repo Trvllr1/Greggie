@@ -71,6 +71,33 @@ func (h *WebhookHandler) handlePaymentSuccess(raw json.RawMessage) {
 		return
 	}
 
+	// New path: multi-seller marketplace orders dispatch via order_payments.
+	if op, perr := h.Store.GetOrderPaymentByStripePI(pi.ID); perr == nil && op != nil {
+		if err := h.Store.UpdateOrderPaymentStatus(op.ID, "succeeded"); err != nil {
+			slog.Error("webhook: failed to confirm sub-payment", "order_payment_id", op.ID, "err", err)
+		}
+		if err := h.Store.CreatePayoutForOrderPayment(op); err != nil {
+			slog.Error("webhook: failed to create seller artifacts", "order_id", op.OrderID, "seller_id", op.SellerID, "err", err)
+		}
+		done, derr := h.Store.AllOrderPaymentsSucceeded(op.OrderID)
+		if derr != nil {
+			slog.Error("webhook: failed to check sibling payments", "order_id", op.OrderID, "err", derr)
+			return
+		}
+		if !done {
+			slog.Info("webhook: sub-payment confirmed, waiting on siblings", "order_id", op.OrderID, "seller_id", op.SellerID)
+			return
+		}
+		// All seller portions paid — confirm order + email customer.
+		if err := h.Store.UpdateOrderStatus(op.OrderID, "confirmed"); err != nil {
+			slog.Error("webhook: failed to confirm order", "order_id", op.OrderID, "err", err)
+		}
+		h.sendOrderConfirmationEmail(op.OrderID)
+		slog.Info("webhook: order fully confirmed via sub-payments", "order_id", op.OrderID)
+		return
+	}
+
+	// Legacy path: single-seller orders set orders.stripe_payment_id directly.
 	order, err := h.Store.GetOrderByStripePaymentID(pi.ID)
 	if err != nil {
 		slog.Error("webhook: order not found for payment", "payment_id", pi.ID, "err", err)
@@ -107,6 +134,34 @@ func (h *WebhookHandler) handlePaymentSuccess(raw json.RawMessage) {
 	slog.Info("webhook: order confirmed", "order_id", order.ID, "payment_id", pi.ID)
 }
 
+// sendOrderConfirmationEmail fires the customer email asynchronously for the
+// multi-seller path. Looks up order details fresh so we get the final totals.
+func (h *WebhookHandler) sendOrderConfirmationEmail(orderID string) {
+	go func() {
+		order, err := h.Store.GetOrderByID(orderID)
+		if err != nil || order == nil {
+			return
+		}
+		recipientEmail := order.Email
+		if recipientEmail == "" && order.UserID != "" {
+			if user, uerr := h.Store.GetUserByID(order.UserID); uerr == nil {
+				recipientEmail = user.Email
+			}
+		}
+		if recipientEmail == "" {
+			return
+		}
+		itemCount := len(order.Items)
+		if itemCount == 0 {
+			itemCount = 1
+		}
+		body := email.OrderConfirmationEmail(order.ID, order.TotalCents, itemCount)
+		if err := email.Send(recipientEmail, "Order Confirmed — Greggie", body); err != nil {
+			slog.Error("webhook: failed to send confirmation email", "order_id", order.ID, "err", err)
+		}
+	}()
+}
+
 func (h *WebhookHandler) handlePaymentFailed(raw json.RawMessage) {
 	var pi stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &pi); err != nil {
@@ -114,13 +169,41 @@ func (h *WebhookHandler) handlePaymentFailed(raw json.RawMessage) {
 		return
 	}
 
+	// New path: marketplace sub-payment. Cancel siblings, restore inventory,
+	// fail the whole order — partial fulfillment is worse than retrying.
+	if op, perr := h.Store.GetOrderPaymentByStripePI(pi.ID); perr == nil && op != nil {
+		if err := h.Store.UpdateOrderPaymentStatus(op.ID, "failed"); err != nil {
+			slog.Error("webhook: failed to mark sub-payment failed", "order_payment_id", op.ID, "err", err)
+		}
+		siblings, _ := h.Store.GetOrderPayments(op.OrderID)
+		for _, sib := range siblings {
+			if sib.ID == op.ID || sib.StripePaymentID == "" {
+				continue
+			}
+			if sib.Status == "processing" || sib.Status == "pending" {
+				if err := payments.CancelPaymentIntent(sib.StripePaymentID); err != nil {
+					slog.Error("webhook: failed to cancel sibling PI", "pi_id", sib.StripePaymentID, "err", err)
+				}
+				_ = h.Store.UpdateOrderPaymentStatus(sib.ID, "canceled")
+			}
+		}
+		if err := h.Store.RestoreInventory(op.OrderID); err != nil {
+			slog.Error("webhook: failed to restore inventory", "order_id", op.OrderID, "err", err)
+		}
+		if err := h.Store.UpdateOrderStatus(op.OrderID, "failed"); err != nil {
+			slog.Error("webhook: failed to mark order failed", "order_id", op.OrderID, "err", err)
+		}
+		slog.Info("webhook: marketplace order failed", "order_id", op.OrderID, "payment_id", pi.ID, "seller_id", op.SellerID)
+		return
+	}
+
+	// Legacy path
 	order, err := h.Store.GetOrderByStripePaymentID(pi.ID)
 	if err != nil {
 		slog.Error("webhook: order not found for failed payment", "payment_id", pi.ID, "err", err)
 		return
 	}
 
-	// Restore inventory and mark order as failed
 	if err := h.Store.RestoreInventory(order.ID); err != nil {
 		slog.Error("webhook: failed to restore inventory", "order_id", order.ID, "err", err)
 	}
