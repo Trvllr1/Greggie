@@ -257,12 +257,15 @@ export function ListingComposer({ onClose, onPublished }: Props) {
               <select
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-indigo-500/50"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500/50"
+                style={{ colorScheme: 'dark' }}
               >
-                <option value="new">New</option>
-                <option value="like_new">Like new</option>
-                <option value="good">Good</option>
-                <option value="fair">Fair</option>
+                <option value="new" className="bg-[#1a1a24] text-white">New</option>
+                <option value="like_new" className="bg-[#1a1a24] text-white">Like new</option>
+                <option value="used_excellent" className="bg-[#1a1a24] text-white">Used – excellent</option>
+                <option value="used_good" className="bg-[#1a1a24] text-white">Used – good</option>
+                <option value="used_fair" className="bg-[#1a1a24] text-white">Used – fair</option>
+                <option value="for_parts" className="bg-[#1a1a24] text-white">For parts / not working</option>
               </select>
               <input
                 value={brand}

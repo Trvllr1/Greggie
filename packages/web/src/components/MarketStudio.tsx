@@ -456,7 +456,7 @@ export function MarketStudio({ onExit }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold">Greggie Market Studio</h1>
-              {program && <span className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{programIsActive ? program.tier : getProgramStatusLabel(program.status)}</span>}
+              {program && (programIsActive || program.status === 'suspended' || program.status === 'rejected' || program.status === 'closed') && <span className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${getProgramStatusTone(program.status)}`}>{programIsActive ? program.tier : getProgramStatusLabel(program.status)}</span>}
             </div>
             <p className="text-[11px] text-white/40">Catalog commerce, fulfillment, payouts, analytics.</p>
           </div>
@@ -481,13 +481,11 @@ export function MarketStudio({ onExit }: Props) {
         </div>
       )}
 
-      {program && !programIsActive && (
-        <div className={`flex items-center justify-between border-b px-5 py-3 text-sm ${program.status === 'pending' || program.status === 'approved' ? 'border-amber-500/20 bg-amber-500/10' : 'border-red-500/20 bg-red-500/10'}`}>
+      {program && !programIsActive && (program.status === 'suspended' || program.status === 'rejected' || program.status === 'closed') && (
+        <div className="flex items-center justify-between border-b border-red-500/20 bg-red-500/10 px-5 py-3 text-sm">
           <div className="flex items-center gap-2 text-white/85">
-            <ShieldCheck size={16} className={program.status === 'pending' || program.status === 'approved' ? 'text-amber-300' : 'text-red-300'} />
+            <ShieldCheck size={16} className="text-red-300" />
             <span>
-              {program.status === 'pending' && 'Your MSP application is under review. Analytics, fulfillment controls, and payout reporting will unlock after activation.'}
-              {program.status === 'approved' && 'Your MSP application is approved and awaiting activation. Seller operations will unlock once the program goes live.'}
               {program.status === 'suspended' && 'Your MSP access is suspended. Seller operations are temporarily unavailable.'}
               {program.status === 'rejected' && 'Your MSP application needs attention before fulfillment and payout operations can be enabled.'}
               {program.status === 'closed' && 'Your MSP enrollment is closed. Seller operations stay disabled until you re-enroll.'}
