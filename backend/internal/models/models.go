@@ -692,6 +692,110 @@ type TierProgress struct {
 	BlockedReason string             `json:"blocked_reason,omitempty"`
 }
 
+// ── Partnership program ──────────────────────────────────────────────
+
+// PartnershipChecklistItem is a single criterion the seller must satisfy
+// to apply for partnership. The UI renders one row per item with a green
+// or red status pip and a value-vs-target string.
+type PartnershipChecklistItem struct {
+	Key      string  `json:"key"`               // stable id: "trailing_90d_gmv", "ship_sla", ...
+	Label    string  `json:"label"`             // human-facing label
+	Target   float64 `json:"target"`            // threshold the seller must clear
+	Current  float64 `json:"current"`           // their current value
+	Unit     string  `json:"unit"`              // "days", "orders", "usd_cents", "pct", "rating"
+	Passing  bool    `json:"passing"`           // true if current >= target
+	Skipped  bool    `json:"skipped,omitempty"` // true if we have no data yet (auto-pass)
+	HelpText string  `json:"help_text,omitempty"`
+}
+
+// PartnershipChecklist is the dashboard view for a seller — the literal
+// checklist of "what blocks me from applying to Partner?". Computed nightly
+// and re-computed on demand when the seller hits the eligibility endpoint.
+type PartnershipChecklist struct {
+	ProgramID         string                     `json:"program_id"`
+	ProgramType       string                     `json:"program_type"`
+	Eligible          bool                       `json:"eligible"`
+	EligibleSince     *time.Time                 `json:"eligible_since,omitempty"`
+	AlreadyPartner    bool                       `json:"already_partner"`
+	TermEndsAt        *time.Time                 `json:"term_ends_at,omitempty"`
+	Items             []PartnershipChecklistItem `json:"items"`
+	NextWindowOpensAt *time.Time                 `json:"next_window_opens_at,omitempty"`
+	OpenWindow        *PartnershipWindow         `json:"open_window,omitempty"`
+}
+
+// PartnershipWindow is a quarterly cohort intake. Ops opens these manually;
+// the slot_cap protects the badge's scarcity.
+type PartnershipWindow struct {
+	ID        string    `json:"id"`
+	Label     string    `json:"label"`
+	OpensAt   time.Time `json:"opens_at"`
+	ClosesAt  time.Time `json:"closes_at"`
+	SlotCap   int       `json:"slot_cap"`
+	SlotsUsed int       `json:"slots_used"`
+	SlotsLeft int       `json:"slots_left"`
+	Status    string    `json:"status"` // scheduled | open | closed
+	Notes     string    `json:"notes,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PartnershipApplication is a seller's submission to a window.
+type PartnershipApplication struct {
+	ID             string     `json:"id"`
+	ProgramID      string     `json:"program_id"`
+	UserID         string     `json:"user_id"`
+	WindowID       string     `json:"window_id"`
+	WindowLabel    string     `json:"window_label,omitempty"`
+	Pitch          string     `json:"pitch"`
+	References     []string   `json:"references,omitempty"`
+	Status         string     `json:"status"` // submitted | under_review | approved | rejected | withdrawn
+	DecisionReason string     `json:"decision_reason,omitempty"`
+	ReviewedBy     *string    `json:"reviewed_by,omitempty"`
+	ReviewedAt     *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	// Snapshot fields the review queue surfaces inline so reviewers don't
+	// have to bounce to another query for context.
+	SellerName   string `json:"seller_name,omitempty"`
+	SellerHandle string `json:"seller_handle,omitempty"`
+	ProgramType  string `json:"program_type,omitempty"`
+	CurrentTier  string `json:"current_tier,omitempty"`
+}
+
+// PartnershipApplicationRequest is the body of POST /partnerships/applications.
+type PartnershipApplicationRequest struct {
+	ProgramType string   `json:"program_type"`
+	Pitch       string   `json:"pitch"`
+	References  []string `json:"references,omitempty"`
+	Agreed      bool     `json:"agreed_to_terms"`
+}
+
+// PartnershipDecisionRequest is the body of the admin approve/reject endpoint.
+type PartnershipDecisionRequest struct {
+	Decision         string `json:"decision"` // "approved" | "rejected"
+	Reason           string `json:"reason"`
+	AccountManagerID string `json:"account_manager_id,omitempty"` // assigned on approve
+}
+
+// PartnerDirectoryEntry is the public "wall of fame" row.
+type PartnerDirectoryEntry struct {
+	UserID       string    `json:"user_id"`
+	DisplayName  string    `json:"display_name"`
+	Handle       string    `json:"handle,omitempty"`
+	AvatarURL    string    `json:"avatar_url,omitempty"`
+	ProgramType  string    `json:"program_type"`
+	PartnerSince time.Time `json:"partner_since"`
+}
+
+// PartnershipWindowRequest is the body of POST /admin/partnerships/windows.
+type PartnershipWindowRequest struct {
+	Label    string    `json:"label"`
+	OpensAt  time.Time `json:"opens_at"`
+	ClosesAt time.Time `json:"closes_at"`
+	SlotCap  int       `json:"slot_cap"`
+	Notes    string    `json:"notes,omitempty"`
+}
+
 type FulfillmentRecord struct {
 	ID              string     `json:"id"`
 	OrderID         string     `json:"order_id"`

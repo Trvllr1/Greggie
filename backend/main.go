@@ -14,6 +14,7 @@ import (
 	"greggie/backend/internal/handlers"
 	"greggie/backend/internal/logging"
 	"greggie/backend/internal/middleware"
+	"greggie/backend/internal/partnerships"
 	"greggie/backend/internal/payments"
 	"greggie/backend/internal/storage"
 	"greggie/backend/internal/store"
@@ -195,6 +196,31 @@ func main() {
 			}
 			if p > 0 || d > 0 {
 				slog.Info("tier_promoter: cycle complete", "promoted", p, "demoted", d)
+			}
+		}
+		run()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			run()
+		}
+	}()
+
+	// ── Partnership eligibility evaluator ──
+	// Daily: refresh the partnership_eligible cache and auto-revoke partners
+	// whose tier has fallen below Established for more than the grace window.
+	partnershipEval := partnerships.NewEvaluator(db, db.PG)
+	partnership := &handlers.PartnershipHandler{Store: db, Evaluator: partnershipEval}
+	go func() {
+		run := func() {
+			eligible, newly, revoked, err := partnershipEval.EvaluateAll()
+			if err != nil {
+				slog.Error("partnership_eval: EvaluateAll failed", "err", err)
+				return
+			}
+			if newly > 0 || revoked > 0 {
+				slog.Info("partnership_eval: cycle complete",
+					"eligible", eligible, "newly_eligible", newly, "revoked", revoked)
 			}
 		}
 		run()
@@ -457,6 +483,15 @@ func main() {
 	protected.Get("/programs/:type", sellerProg.GetProgramStatus)
 	protected.Get("/programs/:type/orders", sellerProg.GetSellerOrders)
 	protected.Get("/programs/:type/payouts", sellerProg.GetSellerPayouts)
+
+	// Partnership Program (seller-facing)
+	protected.Get("/partnerships/eligibility/:program_type", partnership.GetEligibility)
+	protected.Get("/partnerships/window", partnership.GetCurrentWindow)
+	protected.Post("/partnerships/applications", partnership.SubmitApplication)
+	protected.Get("/partnerships/applications", partnership.ListMyApplications)
+	protected.Delete("/partnerships/applications/:id", partnership.Withdraw)
+	// Public partner directory (no auth)
+	api.Get("/partnerships/directory", partnership.Directory)
 	protected.Get("/programs/:type/analytics", sellerProg.GetSellerAnalytics)
 	protected.Put("/programs/orders/:orderId/fulfillment", sellerProg.UpdateOrderFulfillment)
 
@@ -473,6 +508,13 @@ func main() {
 	adminGroup.Put("/programs/:id", admin.UpdateSellerProgram)
 	adminGroup.Post("/programs/:id/partnership", admin.SetPartnership)
 	adminGroup.Post("/payouts/process", admin.ProcessPayouts)
+
+	// Partnership Program (admin)
+	adminGroup.Post("/partnerships/windows", partnership.AdminCreateWindow)
+	adminGroup.Get("/partnerships/windows", partnership.AdminListWindows)
+	adminGroup.Post("/partnerships/windows/:id/status", partnership.AdminSetWindowStatus)
+	adminGroup.Get("/partnerships/applications", partnership.AdminListApplications)
+	adminGroup.Post("/partnerships/applications/:id/decision", partnership.AdminDecide)
 
 	// Billboards (admin CRUD)
 	adminGroup.Get("/billboards", billboard.ListBillboards)
