@@ -92,7 +92,7 @@ function AddProductModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6"
       onClick={onClose}
     >
       <motion.div
@@ -100,7 +100,7 @@ function AddProductModal({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-md bg-gray-900 rounded-2xl border border-gray-700 p-6 mx-4"
+        className="w-full max-w-md bg-gray-900 rounded-2xl border border-gray-700 max-h-[90vh] overflow-y-auto p-6"
       >
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-white">Add Product</h3>
