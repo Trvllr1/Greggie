@@ -2,7 +2,7 @@ package auction
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"time"
 
 	"greggie/backend/internal/store"
@@ -30,13 +30,13 @@ func NewEngine(s *store.Store, hub *ws.Hub) *Engine {
 // Start begins the auction expiry polling loop in a goroutine.
 func (e *Engine) Start() {
 	go e.run()
-	log.Println("auction: engine started (polling every 10s)")
+	slog.Info("auction: engine started", "interval", e.interval)
 }
 
 // Stop signals the engine to stop.
 func (e *Engine) Stop() {
 	close(e.quit)
-	log.Println("auction: engine stopped")
+	slog.Info("auction: engine stopped")
 }
 
 func (e *Engine) run() {
@@ -56,14 +56,14 @@ func (e *Engine) run() {
 func (e *Engine) processExpired() {
 	ids, err := e.Store.GetActiveAuctionsPastEnd()
 	if err != nil {
-		log.Printf("auction: failed to get expired auctions: %v", err)
+		slog.Error("auction: failed to get expired auctions", "err", err)
 		return
 	}
 
 	for _, productID := range ids {
 		winningBid, err := e.Store.EndAuction(productID)
 		if err != nil {
-			log.Printf("auction: failed to end auction %s: %v", productID, err)
+			slog.Error("auction: failed to end auction", "product_id", productID, "err", err)
 			continue
 		}
 
@@ -75,10 +75,10 @@ func (e *Engine) processExpired() {
 		var result string
 		if winningBid != nil {
 			result = "sold"
-			log.Printf("auction: %s ended — winner %s at %d cents", productID, winningBid.UserID, winningBid.AmountCents)
+			slog.Info("auction: ended with winner", "product_id", productID, "winner_user_id", winningBid.UserID, "amount_cents", winningBid.AmountCents)
 		} else {
 			result = "no_sale"
-			log.Printf("auction: %s ended — no winner (reserve not met or no bids)", productID)
+			slog.Info("auction: ended with no winner (reserve not met or no bids)", "product_id", productID)
 		}
 
 		// Broadcast auction end to channel viewers

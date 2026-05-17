@@ -2,7 +2,7 @@ package payments
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -46,15 +46,16 @@ func Init() {
 	if key == "" {
 		env := os.Getenv("ENVIRONMENT")
 		if env != "dev" && env != "test" {
-			log.Fatal("FATAL: STRIPE_SECRET_KEY is required in production")
+			slog.Error("FATAL: STRIPE_SECRET_KEY is required in production")
+			os.Exit(1)
 		}
-		log.Println("payments: STRIPE_SECRET_KEY not set — Stripe disabled (dev mode)")
+		slog.Warn("payments: STRIPE_SECRET_KEY not set \u2014 Stripe disabled (dev mode)")
 		return
 	}
 	stripe.Key = key
 
 	webhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
-	log.Println("payments: Stripe initialized")
+	slog.Info("payments: Stripe initialized")
 }
 
 // Enabled returns true if Stripe is configured.

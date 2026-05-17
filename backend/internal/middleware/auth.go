@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -15,7 +15,8 @@ var jwtSecret []byte
 func init() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+		slog.Error("FATAL: JWT_SECRET environment variable is required")
+		os.Exit(1)
 	}
 	jwtSecret = []byte(secret)
 }

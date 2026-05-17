@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 
 	"greggie/backend/internal/email"
 	"greggie/backend/internal/payments"
@@ -28,13 +28,13 @@ func (h *WebhookHandler) HandleStripeWebhook(c *fiber.Ctx) error {
 	secret := payments.WebhookSecret()
 
 	if secret == "" {
-		log.Println("webhook: STRIPE_WEBHOOK_SECRET not set, skipping verification")
+		slog.Warn("webhook: STRIPE_WEBHOOK_SECRET not set, skipping verification")
 		return c.SendStatus(fiber.StatusOK)
 	}
 
 	event, err := webhook.ConstructEvent(body, sig, secret)
 	if err != nil {
-		log.Printf("webhook: signature verification failed: %v", err)
+		slog.Error("webhook: signature verification failed", "err", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid signature"})
 	}
 
@@ -42,11 +42,11 @@ func (h *WebhookHandler) HandleStripeWebhook(c *fiber.Ctx) error {
 	// double-send confirmation emails, double-restore inventory, etc.
 	fresh, err := h.Store.MarkWebhookEventProcessed(event.ID, "stripe", string(event.Type))
 	if err != nil {
-		log.Printf("webhook: dedup check failed for event %s: %v", event.ID, err)
+		slog.Error("webhook: dedup check failed", "event_id", event.ID, "err", err)
 		// Fall through and process anyway — better to risk a duplicate than to drop on the floor.
 		// Stripe will retry on non-2xx, so returning 500 here would just amplify the problem.
 	} else if !fresh {
-		log.Printf("webhook: duplicate event %s (%s) — already processed, ack", event.ID, event.Type)
+		slog.Info("webhook: duplicate event — already processed, ack", "event_id", event.ID, "event_type", event.Type)
 		return c.SendStatus(fiber.StatusOK)
 	}
 
@@ -58,7 +58,7 @@ func (h *WebhookHandler) HandleStripeWebhook(c *fiber.Ctx) error {
 	case "account.updated":
 		h.handleAccountUpdated(event.Data.Raw)
 	default:
-		log.Printf("webhook: unhandled event type %s", event.Type)
+		slog.Info("webhook: unhandled event type", "event_type", event.Type)
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -67,21 +67,21 @@ func (h *WebhookHandler) HandleStripeWebhook(c *fiber.Ctx) error {
 func (h *WebhookHandler) handlePaymentSuccess(raw json.RawMessage) {
 	var pi stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &pi); err != nil {
-		log.Printf("webhook: failed to parse payment_intent.succeeded: %v", err)
+		slog.Error("webhook: failed to parse payment_intent.succeeded", "err", err)
 		return
 	}
 
 	order, err := h.Store.GetOrderByStripePaymentID(pi.ID)
 	if err != nil {
-		log.Printf("webhook: order not found for payment %s: %v", pi.ID, err)
+		slog.Error("webhook: order not found for payment", "payment_id", pi.ID, "err", err)
 		return
 	}
 
 	if err := h.Store.UpdateOrderStatus(order.ID, "confirmed"); err != nil {
-		log.Printf("webhook: failed to confirm order %s: %v", order.ID, err)
+		slog.Error("webhook: failed to confirm order", "order_id", order.ID, "err", err)
 	}
 	if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
-		log.Printf("webhook: failed to create seller artifacts for order %s: %v", order.ID, err)
+		slog.Error("webhook: failed to create seller artifacts", "order_id", order.ID, "err", err)
 	}
 
 	// Send order confirmation email
@@ -99,41 +99,41 @@ func (h *WebhookHandler) handlePaymentSuccess(raw json.RawMessage) {
 			}
 			body := email.OrderConfirmationEmail(order.ID, order.TotalCents, itemCount)
 			if err := email.Send(recipientEmail, "Order Confirmed — Greggie", body); err != nil {
-				log.Printf("webhook: failed to send confirmation email for order %s: %v", order.ID, err)
+				slog.Error("webhook: failed to send confirmation email", "order_id", order.ID, "err", err)
 			}
 		}
 	}()
 
-	log.Printf("webhook: order %s confirmed (payment %s)", order.ID, pi.ID)
+	slog.Info("webhook: order confirmed", "order_id", order.ID, "payment_id", pi.ID)
 }
 
 func (h *WebhookHandler) handlePaymentFailed(raw json.RawMessage) {
 	var pi stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &pi); err != nil {
-		log.Printf("webhook: failed to parse payment_intent.payment_failed: %v", err)
+		slog.Error("webhook: failed to parse payment_intent.payment_failed", "err", err)
 		return
 	}
 
 	order, err := h.Store.GetOrderByStripePaymentID(pi.ID)
 	if err != nil {
-		log.Printf("webhook: order not found for failed payment %s: %v", pi.ID, err)
+		slog.Error("webhook: order not found for failed payment", "payment_id", pi.ID, "err", err)
 		return
 	}
 
 	// Restore inventory and mark order as failed
 	if err := h.Store.RestoreInventory(order.ID); err != nil {
-		log.Printf("webhook: failed to restore inventory for order %s: %v", order.ID, err)
+		slog.Error("webhook: failed to restore inventory", "order_id", order.ID, "err", err)
 	}
 	if err := h.Store.UpdateOrderStatus(order.ID, "failed"); err != nil {
-		log.Printf("webhook: failed to update order %s status: %v", order.ID, err)
+		slog.Error("webhook: failed to update order status", "order_id", order.ID, "err", err)
 	}
-	log.Printf("webhook: order %s failed (payment %s)", order.ID, pi.ID)
+	slog.Info("webhook: order failed", "order_id", order.ID, "payment_id", pi.ID)
 }
 
 func (h *WebhookHandler) handleAccountUpdated(raw json.RawMessage) {
 	var acct stripe.Account
 	if err := json.Unmarshal(raw, &acct); err != nil {
-		log.Printf("webhook: failed to parse account.updated: %v", err)
+		slog.Error("webhook: failed to parse account.updated", "err", err)
 		return
 	}
 
@@ -142,9 +142,9 @@ func (h *WebhookHandler) handleAccountUpdated(raw json.RawMessage) {
 		// Find user by stripe_account_id and mark onboarding complete
 		// We search from the account ID
 		if err := h.Store.SetStripeOnboardingByAccountID(acct.ID, true); err != nil {
-			log.Printf("webhook: failed to update onboarding for account %s: %v", acct.ID, err)
+			slog.Error("webhook: failed to update onboarding", "account_id", acct.ID, "err", err)
 		} else {
-			log.Printf("webhook: account %s onboarding complete", acct.ID)
+			slog.Info("webhook: account onboarding complete", "account_id", acct.ID)
 		}
 	}
 }

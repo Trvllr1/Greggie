@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"os"
 	"strings"
@@ -101,7 +101,7 @@ func (h *CheckoutHandler) InitCheckout(c *fiber.Ctx) error {
 		order.StripeClientSecret = clientSecret
 		_ = h.Store.UpdateOrderStripePaymentID(order.ID, piID, clientSecret)
 	} else if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
-		log.Printf("checkout: failed to create seller artifacts for order %s: %v", order.ID, err)
+		slog.Error("checkout: failed to create seller artifacts", "order_id", order.ID, "err", err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(order)
@@ -250,11 +250,11 @@ func (h *CheckoutHandler) MarketplaceCheckout(c *fiber.Ctx) error {
 			"order_id": order.ID,
 			"tax_rate": fmt.Sprintf("%.6f", taxRate),
 		}); err != nil {
-			log.Printf("checkout: failed to create Stripe tax transaction for order %s: %v", order.ID, err)
+			slog.Error("checkout: failed to create Stripe tax transaction", "order_id", order.ID, "err", err)
 		}
 	}
 	if err := h.Store.EnsureSellerArtifactsForOrder(order.ID); err != nil {
-		log.Printf("checkout: failed to create seller artifacts for marketplace order %s: %v", order.ID, err)
+		slog.Error("checkout: failed to create seller artifacts for marketplace order", "order_id", order.ID, "err", err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(order)
@@ -432,7 +432,7 @@ func (h *CheckoutHandler) calculateMarketplaceTax(addr models.ShippingAddressInp
 		if os.Getenv("ENVIRONMENT") != "dev" && os.Getenv("ENVIRONMENT") != "test" {
 			return 0, 0, "", "", err
 		}
-		log.Printf("checkout: Stripe Tax unavailable, falling back to static estimate: %v", err)
+		slog.Warn("checkout: Stripe Tax unavailable, falling back to static estimate", "err", err)
 	}
 
 	taxableAmount := int64(0)

@@ -2,7 +2,7 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -14,7 +14,7 @@ const (
 	maxMessageBytes = 8 * 1024 // 8 KB per WS frame — chat msgs are tiny; rejects bombs
 	pongWait        = 60 * time.Second
 	pingPeriod      = 30 * time.Second
-	chatRateBurst   = 5               // allow short bursts
+	chatRateBurst   = 5                      // allow short bursts
 	chatRateRefill  = 500 * time.Millisecond // 1 msg per 500ms steady-state (2/sec)
 )
 
@@ -113,7 +113,7 @@ func (c *Client) readPump() {
 		}
 		var msg Message
 		if json.Unmarshal(raw, &msg) != nil {
-			log.Printf("ws: failed to unmarshal message: %s", string(raw))
+			slog.Warn("ws: failed to unmarshal message", "raw", string(raw))
 			continue
 		}
 		// Handle client subscribe message
@@ -158,7 +158,7 @@ func (c *Client) readPump() {
 			if c.hub.OnChatMessage != nil {
 				c.hub.OnChatMessage(msg.ChannelID, out)
 			}
-			log.Printf("ws: chat broadcast to channel=%s room_size=%d", msg.ChannelID, c.hub.ChannelClientCount(msg.ChannelID))
+			slog.Debug("ws: chat broadcast", "channel_id", msg.ChannelID, "room_size", c.hub.ChannelClientCount(msg.ChannelID))
 			c.hub.BroadcastToChannel(msg.ChannelID, out)
 			continue
 		}
@@ -176,7 +176,7 @@ func (c *Client) readPump() {
 			outPayload, _ := json.Marshal(map[string]interface{}{"count": totalLikes})
 			outMsg := Message{Event: EventHeartBurst, ChannelID: msg.ChannelID, Payload: outPayload}
 			out, _ := json.Marshal(outMsg)
-			log.Printf("ws: heart broadcast to channel=%s room_size=%d total_likes=%d", msg.ChannelID, c.hub.ChannelClientCount(msg.ChannelID), totalLikes)
+			slog.Debug("ws: heart broadcast", "channel_id", msg.ChannelID, "room_size", c.hub.ChannelClientCount(msg.ChannelID), "total_likes", totalLikes)
 			c.hub.BroadcastToChannel(msg.ChannelID, out)
 			continue
 		}
@@ -223,8 +223,8 @@ type Hub struct {
 	OnLeave func(channelID, userID string)
 
 	// Storage callbacks — wired by main.go to persist chat/likes in Redis
-	OnChatMessage func(channelID string, msgJSON []byte)            // store chat message
-	OnHeartBurst  func(channelID string) int64                      // increment likes, return new count
+	OnChatMessage   func(channelID string, msgJSON []byte)                                  // store chat message
+	OnHeartBurst    func(channelID string) int64                                            // increment likes, return new count
 	GetChannelState func(channelID string) (chatHistory []string, likes int64, viewers int) // fetch state for new joiner
 }
 
@@ -365,7 +365,7 @@ func (h *Hub) BroadcastAll(data []byte) {
 func (h *Hub) BroadcastJSON(channelID string, msg Message) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("ws: marshal error: %v", err)
+		slog.Error("ws: marshal error", "err", err)
 		return
 	}
 	h.BroadcastToChannel(channelID, data)
@@ -375,7 +375,7 @@ func (h *Hub) BroadcastJSON(channelID string, msg Message) {
 func (h *Hub) BroadcastAllJSON(msg Message) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("ws: marshal error: %v", err)
+		slog.Error("ws: marshal error", "err", err)
 		return
 	}
 	h.BroadcastAll(data)
@@ -408,7 +408,7 @@ func (h *Hub) Shutdown() {
 		delete(h.clients, client)
 	}
 	h.channels = make(map[string]map[*Client]bool)
-	log.Println("ws: hub shut down, all clients disconnected")
+	slog.Info("ws: hub shut down, all clients disconnected")
 }
 
 // HandleWebSocket is the Fiber WebSocket handler.

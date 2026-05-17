@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,6 +12,7 @@ import (
 	"greggie/backend/internal/auction"
 	"greggie/backend/internal/email"
 	"greggie/backend/internal/handlers"
+	"greggie/backend/internal/logging"
 	"greggie/backend/internal/middleware"
 	"greggie/backend/internal/payments"
 	"greggie/backend/internal/storage"
@@ -28,6 +29,7 @@ import (
 
 func main() {
 	bootTime := time.Now()
+	logging.Init()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -36,7 +38,8 @@ func main() {
 
 	db, err := store.New()
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		slog.Error("failed to connect to database", "err", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -168,11 +171,11 @@ func main() {
 		for range ticker.C {
 			n, err := db.ExpireStalePendingOrders(15 * time.Minute)
 			if err != nil {
-				log.Printf("reaper: ExpireStalePendingOrders failed: %v", err)
+				slog.Error("reaper: ExpireStalePendingOrders failed", "err", err)
 				continue
 			}
 			if n > 0 {
-				log.Printf("reaper: expired %d stale pending order(s)", n)
+				slog.Info("reaper: expired stale pending orders", "count", n)
 			}
 		}
 	}()
@@ -451,22 +454,22 @@ func main() {
 
 	go func() {
 		if err := app.Listen(":" + port); err != nil {
-			log.Printf("server error: %v", err)
+			slog.Error("server error", "err", err)
 		}
 	}()
-	log.Printf("Greggie™ backend started on :%s", port)
+	slog.Info("Greggie backend started", "port", port)
 
 	<-quit
-	log.Println("Shutting down gracefully...")
+	slog.Info("shutting down gracefully")
 
 	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
-		log.Printf("shutdown error: %v", err)
+		slog.Error("shutdown error", "err", err)
 	}
 
 	auctionEngine.Stop()
 	hub.Shutdown()
 	db.Close()
-	log.Println("Server stopped")
+	slog.Info("server stopped")
 
 	// Suppress unused import warnings
 	_ = strings.Join

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -36,7 +36,7 @@ func New() (*Store, error) {
 	pg.SetConnMaxLifetime(5 * time.Minute)
 	pg.SetConnMaxIdleTime(3 * time.Minute)
 
-	log.Printf("DB pool: maxOpen=%d, maxIdle=%d", envInt("DB_MAX_OPEN", 50), envInt("DB_MAX_IDLE", 10))
+	slog.Info("db pool configured", "max_open", envInt("DB_MAX_OPEN", 50), "max_idle", envInt("DB_MAX_IDLE", 10))
 
 	if err := pg.Ping(); err != nil {
 		return nil, fmt.Errorf("postgres ping: %w", err)
@@ -1644,11 +1644,11 @@ func (s *Store) ExpireStalePendingOrders(olderThan time.Duration) (int, error) {
 	expired := 0
 	for _, id := range ids {
 		if err := s.RestoreInventory(id); err != nil {
-			log.Printf("reaper: restore inventory failed for order %s: %v", id, err)
+			slog.Error("reaper: restore inventory failed", "order_id", id, "err", err)
 			continue
 		}
 		if err := s.UpdateOrderStatus(id, "expired"); err != nil {
-			log.Printf("reaper: mark expired failed for order %s: %v", id, err)
+			slog.Error("reaper: mark expired failed", "order_id", id, "err", err)
 			continue
 		}
 		expired++

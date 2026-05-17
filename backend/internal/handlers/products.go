@@ -3,7 +3,7 @@ package handlers
 import (
 	"greggie/backend/internal/models"
 	"greggie/backend/internal/store"
-	"log"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -48,7 +48,7 @@ func (h *ProductHandler) GetReviews(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 	reviews, err := h.Store.GetProductReviews(productID, limit, offset)
 	if err != nil {
-		log.Printf("GetReviews error for %s: %v", productID, err)
+		slog.Error("products: GetReviews failed", "product_id", productID, "err", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load reviews"})
 	}
 	if reviews == nil {

@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 
 	"greggie/backend/internal/models"
 	"greggie/backend/internal/payments"
@@ -105,13 +105,13 @@ func (h *AdminHandler) ProcessPayouts(c *fiber.Ctx) error {
 		description := "Greggie payout for order " + p.OrderID
 		transferID, err := payments.CreateTransfer(p.NetCents, "usd", p.StripeAccountID, description, idempotencyKey)
 		if err != nil {
-			log.Printf("admin: payout transfer failed for payout %s: %v", p.PayoutID, err)
+			slog.Error("admin: payout transfer failed", "payout_id", p.PayoutID, "err", err)
 			_ = h.Store.MarkPayoutFailed(p.PayoutID)
 			failed++
 			continue
 		}
 		if err := h.Store.MarkPayoutPaid(p.PayoutID, transferID); err != nil {
-			log.Printf("admin: failed to mark payout %s as paid: %v", p.PayoutID, err)
+			slog.Error("admin: failed to mark payout as paid", "payout_id", p.PayoutID, "err", err)
 			failed++
 			continue
 		}

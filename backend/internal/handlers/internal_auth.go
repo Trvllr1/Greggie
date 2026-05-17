@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -47,7 +47,7 @@ func (h *InternalHandler) MediaMTXAuth(c *fiber.Ctx) error {
 
 	var req mediaMTXAuthRequest
 	if err := c.BodyParser(&req); err != nil {
-		log.Printf("mediamtx-auth: bad body: %v", err)
+		slog.Warn("mediamtx-auth: bad body", "err", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bad request"})
 	}
 
@@ -62,16 +62,16 @@ func (h *InternalHandler) MediaMTXAuth(c *fiber.Ctx) error {
 		key = key[idx+1:]
 	}
 	if key == "" {
-		log.Printf("mediamtx-auth: publish denied (empty path) from %s", req.IP)
+		slog.Warn("mediamtx-auth: publish denied (empty path)", "ip", req.IP)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing stream key"})
 	}
 
 	ch, err := h.Store.GetChannelByStreamKey(key)
 	if err != nil || ch == nil {
-		log.Printf("mediamtx-auth: publish denied (unknown key) from %s protocol=%s", req.IP, req.Protocol)
+		slog.Warn("mediamtx-auth: publish denied (unknown key)", "ip", req.IP, "protocol", req.Protocol)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid stream key"})
 	}
 
-	log.Printf("mediamtx-auth: publish allowed channel=%s from %s protocol=%s", ch.ID, req.IP, req.Protocol)
+	slog.Info("mediamtx-auth: publish allowed", "channel_id", ch.ID, "ip", req.IP, "protocol", req.Protocol)
 	return c.SendStatus(fiber.StatusOK)
 }

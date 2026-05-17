@@ -2,7 +2,7 @@ package email
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/smtp"
 	"os"
 	"strings"
@@ -28,7 +28,7 @@ func Init() {
 	if smtpHost == "" || smtpPort == "" {
 		env := os.Getenv("ENVIRONMENT")
 		if env != "dev" && env != "test" {
-			log.Println("email: SMTP not configured — emails disabled (set SMTP_HOST, SMTP_PORT)")
+			slog.Warn("email: SMTP not configured \u2014 emails disabled (set SMTP_HOST, SMTP_PORT)")
 		}
 		return
 	}
@@ -36,7 +36,7 @@ func Init() {
 		fromAddress = "no-reply@greggie.app"
 	}
 	enabled = true
-	log.Printf("email: configured via %s:%s", smtpHost, smtpPort)
+	slog.Info("email: configured", "host", smtpHost, "port", smtpPort)
 }
 
 // Enabled returns true if email sending is configured.
@@ -47,7 +47,7 @@ func Enabled() bool {
 // Send sends an email. In dev mode (disabled), it logs instead of sending.
 func Send(to, subject, htmlBody string) error {
 	if !enabled {
-		log.Printf("email [dev-log]: to=%s subject=%s body_len=%d", to, subject, len(htmlBody))
+		slog.Info("email [dev-log]", "to", to, "subject", subject, "body_len", len(htmlBody))
 		return nil
 	}
 

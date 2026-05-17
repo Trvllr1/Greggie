@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -35,7 +35,7 @@ func Init() {
 	if bucket == "" {
 		env := os.Getenv("ENVIRONMENT")
 		if env != "dev" && env != "test" {
-			log.Println("storage: S3_BUCKET not set — uploads disabled")
+			slog.Warn("storage: S3_BUCKET not set \u2014 uploads disabled")
 		}
 		return
 	}
@@ -55,7 +55,7 @@ func Init() {
 
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		log.Printf("storage: failed to load AWS config: %v", err)
+		slog.Error("storage: failed to load AWS config", "err", err)
 		return
 	}
 
@@ -79,7 +79,7 @@ func Init() {
 	}
 
 	enabled = true
-	log.Printf("storage: S3 configured (bucket=%s, public=%s)", bucket, publicURL)
+	slog.Info("storage: S3 configured", "bucket", bucket, "public_url", publicURL)
 }
 
 // Enabled returns true if S3 storage is configured.
